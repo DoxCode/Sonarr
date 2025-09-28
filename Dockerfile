@@ -41,7 +41,7 @@ RUN dotnet publish src/Sonarr.sln \
     -c Release \
     -r linux-${TARGETARCH} \
     --no-restore \
-    --framework net8.0 \
+    --framework net6.0 \
     -o /app/publish \
     -p:RunAnalyzers=false \
     -p:TreatWarningsAsErrors=false
