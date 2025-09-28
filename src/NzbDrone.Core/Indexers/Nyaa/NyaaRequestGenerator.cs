@@ -91,7 +91,17 @@ namespace NzbDrone.Core.Indexers.Nyaa
             {
                 if (Settings.AnimeStandardFormatSearch && searchCriteria.SeasonNumber > 0)
                 {
+                    // Original pattern: <Nombre serie> sXX
                     pageableRequests.Add(GetPagedRequests($"{searchTitle}+s{searchCriteria.SeasonNumber:00}"));
+
+                    // New pattern: <Nombre serie> Season XX
+                    pageableRequests.Add(GetPagedRequests($"{searchTitle}+Season+{searchCriteria.SeasonNumber:00}"));
+                }
+
+                // New pattern: <Nombre serie> <Year> (only if series has a year)
+                if (searchCriteria.Series.Year > 0)
+                {
+                    pageableRequests.Add(GetPagedRequests($"{searchTitle}+{searchCriteria.Series.Year}"));
                 }
             }
 
