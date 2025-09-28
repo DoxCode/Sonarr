@@ -407,6 +407,7 @@ namespace NzbDrone.Core.IndexerSearch
                 .Select(epList => epList.First())
                 .ToList();
 
+             // First: perform season (batch) searches
             foreach (var season in seasonsToSearch)
             {
                 searchSpec.SeasonNumber = season.SeasonNumber;
@@ -415,9 +416,37 @@ namespace NzbDrone.Core.IndexerSearch
                 downloadDecisions.AddRange(decisions);
             }
 
-            foreach (var episode in episodesToSearch)
+            // If this is an interactive search, only search for season batches
+            if (interactiveSearch)
             {
-                downloadDecisions.AddRange(await SearchAnime(series, episode, monitoredOnly, userInvokedSearch, interactiveSearch, true));
+                return DeDupeDecisions(downloadDecisions);
+            }
+
+            // Automatic search: decide si hay que caer a búsquedas por episodio.
+            // Se hace si no hubo resultados de season, o si la season está todavía en emisión,
+            // o si la última emisión fue dentro de los últimos N días.
+            const int EpisodeFallbackGraceDays = 5;
+
+            // Detectar si hay episodios futuros (season todavía en emisión)
+            var seasonHasFutureEpisodes = episodes.Any(ep => ep.AirDateUtc.HasValue && ep.AirDateUtc.Value > DateTime.UtcNow);
+
+            // Última fecha emitida (sólo episodios ya emitidos)
+            var lastAired = episodes
+                .Where(ep => ep.AirDateUtc.HasValue && ep.AirDateUtc.Value <= DateTime.UtcNow)
+                .Select(ep => ep.AirDateUtc.Value)
+                .DefaultIfEmpty(DateTime.MinValue)
+                .Max();
+
+            var seasonRecentlyEnded = lastAired != DateTime.MinValue &&
+                                      (DateTime.UtcNow - lastAired).TotalDays <= EpisodeFallbackGraceDays;
+
+            if (!downloadDecisions.Any() || seasonHasFutureEpisodes || seasonRecentlyEnded)
+            {
+                foreach (var episode in episodesToSearch)
+                {
+                    // call per-episode anime search; keep isSeasonSearch=true to ensure criteria handling
+                    downloadDecisions.AddRange(await SearchAnime(series, episode, monitoredOnly, userInvokedSearch, interactiveSearch, true));
+                }
             }
 
             return DeDupeDecisions(downloadDecisions);
