@@ -621,15 +621,8 @@ namespace NzbDrone.Core.Parser
                 return new List<Episode>();
             }
 
-            // ANIME PART FIX: Check if this is an anime with season parts (e.g., "Spy x Family Part 2 - 01")
-            // If so, we need to adjust the episode numbers accordingly
-            var episodeNumberOffset = GetAnimePartEpisodeOffset(series, parsedEpisodeInfo, searchCriteria);
-
             foreach (var episodeNumber in parsedEpisodeInfo.EpisodeNumbers)
             {
-                // Adjust episode number for multi-part anime seasons
-                var adjustedEpisodeNumber = episodeNumber + episodeNumberOffset;
-
                 if (series.UseSceneNumbering && sceneSource)
                 {
                     var episodes = new List<Episode>();
@@ -637,12 +630,12 @@ namespace NzbDrone.Core.Parser
                     if (searchCriteria != null)
                     {
                         episodes = searchCriteria.Episodes.Where(e => e.SceneSeasonNumber == parsedEpisodeInfo.SeasonNumber &&
-                                                                      e.SceneEpisodeNumber == adjustedEpisodeNumber).ToList();
+                                                                      e.SceneEpisodeNumber == episodeNumber).ToList();
                     }
 
                     if (!episodes.Any())
                     {
-                        episodes = _episodeService.FindEpisodesBySceneNumbering(series.Id, mappedSeasonNumber, adjustedEpisodeNumber);
+                        episodes = _episodeService.FindEpisodesBySceneNumbering(series.Id, mappedSeasonNumber, episodeNumber);
                     }
 
                     if (episodes != null && episodes.Any())
@@ -662,12 +655,12 @@ namespace NzbDrone.Core.Parser
 
                 if (searchCriteria != null)
                 {
-                    episodeInfo = searchCriteria.Episodes.SingleOrDefault(e => e.SeasonNumber == mappedSeasonNumber && e.EpisodeNumber == adjustedEpisodeNumber);
+                    episodeInfo = searchCriteria.Episodes.SingleOrDefault(e => e.SeasonNumber == mappedSeasonNumber && e.EpisodeNumber == episodeNumber);
                 }
 
                 if (episodeInfo == null)
                 {
-                    episodeInfo = _episodeService.FindEpisode(series.Id, mappedSeasonNumber, adjustedEpisodeNumber);
+                    episodeInfo = _episodeService.FindEpisode(series.Id, mappedSeasonNumber, episodeNumber);
                 }
 
                 if (episodeInfo != null)
@@ -681,109 +674,6 @@ namespace NzbDrone.Core.Parser
             }
 
             return result;
-        }
-
-        /// <summary>
-        /// For anime seasons split into multiple parts (e.g., "Spy x Family Part 2 - 01"),
-        /// calculates the episode number offset to map "Part 2 - 01" to the actual episode number in the season.
-        /// Returns 0 if no part-based adjustment is needed.
-        /// </summary>
-        private int GetAnimePartEpisodeOffset(Series series, ParsedEpisodeInfo parsedEpisodeInfo, SearchCriteriaBase searchCriteria)
-        {
-            if (series == null || series.SeriesType != SeriesTypes.Anime || string.IsNullOrEmpty(parsedEpisodeInfo.ReleaseTitle))
-            {
-                return 0;
-            }
-
-            // Try to detect "Part X" in the release title
-            var partMatch = System.Text.RegularExpressions.Regex.Match(
-                parsedEpisodeInfo.ReleaseTitle,
-                @"Part\s*(\d+)",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-            if (!partMatch.Success || !int.TryParse(partMatch.Groups[1].Value, out var detectedPartNumber))
-            {
-                return 0;
-            }
-
-            // If we can't find episodes for this season, we can't calculate the offset
-            if (parsedEpisodeInfo.SeasonNumber <= 0)
-            {
-                return 0;
-            }
-
-            // Get all episodes for this season to determine part boundaries
-            var seasonEpisodes = _episodeService.GetEpisodesBySeason(series.Id, parsedEpisodeInfo.SeasonNumber);
-
-            if (!seasonEpisodes.Any())
-            {
-                return 0;
-            }
-
-            // Identify parts based on FinaleType markers
-            var partRanges = GetAnimeSeasonPartRanges(seasonEpisodes);
-
-            if (partRanges.Count <= 1)
-            {
-                // No multi-part season detected
-                return 0;
-            }
-
-            // Verify the detected part number is valid
-            if (detectedPartNumber < 1 || detectedPartNumber > partRanges.Count)
-            {
-                _logger.Debug("Detected part {0} but season has only {1} parts", detectedPartNumber, partRanges.Count);
-                return 0;
-            }
-
-            // Calculate offset: Part 1 has offset 0, Part 2 starts at the end of Part 1, etc.
-            var offset = 0;
-            for (var i = 0; i < detectedPartNumber - 1; i++)
-            {
-                offset += partRanges[i].Count;
-            }
-
-            _logger.Debug("Anime part adjustment: Detected Part {0}, applying episode offset of {1}", detectedPartNumber, offset);
-            return offset;
-        }
-
-        /// <summary>
-        /// Analyzes episodes to identify part boundaries based on FinaleType.
-        /// Returns a list of episode groups, where each group represents a part.
-        /// </summary>
-        private List<List<Episode>> GetAnimeSeasonPartRanges(List<Episode> seasonEpisodes)
-        {
-            var parts = new List<List<Episode>>();
-            var currentPart = new List<Episode>();
-
-            foreach (var episode in seasonEpisodes.OrderBy(e => e.EpisodeNumber))
-            {
-                currentPart.Add(episode);
-
-                // Check if this episode marks the end of a part
-                if (!string.IsNullOrEmpty(episode.FinaleType) &&
-                    (episode.FinaleType.Equals("midseason", StringComparison.OrdinalIgnoreCase) ||
-                     episode.FinaleType.Equals("season", StringComparison.OrdinalIgnoreCase)))
-                {
-                    // End of a part detected
-                    parts.Add(new List<Episode>(currentPart));
-                    currentPart.Clear();
-
-                    // If it's a season finale, we're done
-                    if (episode.FinaleType.Equals("season", StringComparison.OrdinalIgnoreCase))
-                    {
-                        break;
-                    }
-                }
-            }
-
-            // Add any remaining episodes as the last part
-            if (currentPart.Count > 0)
-            {
-                parts.Add(currentPart);
-            }
-
-            return parts.Count > 0 ? parts : new List<List<Episode>> { seasonEpisodes };
         }
     }
 }
