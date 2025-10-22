@@ -270,16 +270,6 @@ namespace NzbDrone.Core.Parser
                 return new List<Episode>();
             }
 
-            // IMPROVED: Handle multi-season releases by filtering to requested season
-            if (parsedEpisodeInfo.IsMultiSeason && parsedEpisodeInfo.DetectedSeasons.Any() && mappedSeasonNumber > 0)
-            {
-                // Only include episodes that belong to the mapped season
-                if (!parsedEpisodeInfo.DetectedSeasons.Contains(mappedSeasonNumber))
-                {
-                    // Season not in detected list, attempting to map anyway
-                }
-            }
-
             return GetStandardEpisodes(series, parsedEpisodeInfo, mappedSeasonNumber, sceneSource, searchCriteria);
         }
 

@@ -393,21 +393,6 @@ namespace Sonarr.Api.V3.Queue
             return queueItem.ToResource(includeSeries, includeEpisode);
         }
 
-        [HttpPut("manual-episode-mapping")]
-        public void UpdateManualEpisodeMapping([FromBody] ManualEpisodeMappingResource resource)
-        {
-            var queueItem = _queueService.Find(resource.QueueId);
-
-            if (queueItem == null)
-            {
-                throw new NotFoundException("Queue item not found");
-            }
-
-            // This endpoint allows manual mapping of episodes for multi-season releases
-            // The actual episode assignment will be handled by the UI/import process
-            BroadcastResourceChange(ModelAction.Updated);
-        }
-
         [NonAction]
         public void Handle(QueueUpdatedEvent message)
         {

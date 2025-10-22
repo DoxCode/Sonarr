@@ -1130,40 +1130,12 @@ namespace NzbDrone.Core.Organizer
                 return string.Empty;
             }
 
-            var fileName = episodeFile.RelativePath.IsNullOrWhiteSpace()
-                ? Path.GetFileNameWithoutExtension(episodeFile.Path)
-                : Path.GetFileNameWithoutExtension(episodeFile.RelativePath);
-
-            // IMPROVED: Clean up the filename if it contains multiple seasons pattern
-            // This handles cases like "[Judas] One Punch Man (Seasons 1-2 + OVAs + Specials) [BD 1080p]..."
-            fileName = CleanMultiSeasonFileName(fileName);
-
-            return fileName;
-        }
-
-        private string CleanMultiSeasonFileName(string fileName)
-        {
-            try
+            if (episodeFile.RelativePath.IsNullOrWhiteSpace())
             {
-                // Check if filename contains patterns like "(Seasons X-Y)" or "Seasons X-Y"
-                var multiSeasonPattern = new Regex(@"\(?\s*Seasons?\s+\d+\s*[-–]\s*\d+", RegexOptions.IgnoreCase);
-                if (multiSeasonPattern.IsMatch(fileName))
-                {
-                    // Remove the multi-season indicator from the name
-                    fileName = multiSeasonPattern.Replace(fileName, string.Empty);
-                    fileName = new Regex(@"\s*\+\s*(OVA|Special|Bonus|Extra|DVD|BD|1080p).*", RegexOptions.IgnoreCase).Replace(fileName, string.Empty);
-                }
-
-                // Remove extra parentheses and spaces
-                fileName = Regex.Replace(fileName, @"\s+", " ").Trim();
-                fileName = Regex.Replace(fileName, @"\(\s*\)", string.Empty);
-            }
-            catch
-            {
-                // If cleaning fails, return original name
+                return Path.GetFileNameWithoutExtension(episodeFile.Path);
             }
 
-            return fileName;
+            return Path.GetFileNameWithoutExtension(episodeFile.RelativePath);
         }
 
         private int GetLengthWithoutEpisodeTitle(string pattern, NamingConfig namingConfig)

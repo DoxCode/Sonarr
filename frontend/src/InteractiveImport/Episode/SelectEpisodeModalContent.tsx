@@ -87,7 +87,6 @@ function SelectEpisodeModalContent(props: SelectEpisodeModalContentProps) {
   } = props;
 
   const [filter, setFilter] = useState('');
-  const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
   const [selectState, setSelectState] = useSelectState();
 
   const { allSelected, allUnselected, selectedState } = selectState;
@@ -102,31 +101,6 @@ function SelectEpisodeModalContent(props: SelectEpisodeModalContentProps) {
   const selectionIsValid =
     selectedEpisodesCount > 0 && selectedEpisodesCount % selectedCount === 0;
 
-  // IMPROVED: Group episodes by season
-  const groupedBySeason = React.useMemo(() => {
-    const groups: Record<number, Episode[]> = {};
-    items.forEach((item) => {
-      if (!groups[item.seasonNumber]) {
-        groups[item.seasonNumber] = [];
-      }
-      groups[item.seasonNumber].push(item);
-    });
-    return groups;
-  }, [items]);
-
-  const seasons = React.useMemo(
-    () => Object.keys(groupedBySeason).map(Number).sort((a, b) => a - b),
-    [groupedBySeason]
-  );
-
-  // IMPROVED: Filter items by selected season
-  const filteredItems = React.useMemo(() => {
-    if (selectedSeason !== null) {
-      return items.filter((item) => item.seasonNumber === selectedSeason);
-    }
-    return items;
-  }, [items, selectedSeason]);
-
   const onFilterChange = useCallback(
     ({ value }: InputChanged<string>) => {
       setFilter(value.toLowerCase());
@@ -136,22 +110,22 @@ function SelectEpisodeModalContent(props: SelectEpisodeModalContentProps) {
 
   const onSelectAllChange = useCallback(
     ({ value }: CheckInputChanged) => {
-      setSelectState({ type: value ? 'selectAll' : 'unselectAll', items: filteredItems });
+      setSelectState({ type: value ? 'selectAll' : 'unselectAll', items });
     },
-    [filteredItems, setSelectState]
+    [items, setSelectState]
   );
 
   const onSelectedChange = useCallback(
     ({ id, value, shiftKey = false }: SelectStateInputProps) => {
       setSelectState({
         type: 'toggleSelected',
-        items: filteredItems,
+        items,
         id,
         isSelected: value,
         shiftKey,
       });
     },
-    [filteredItems, setSelectState]
+    [items, setSelectState]
   );
 
   const onSortPress = useCallback(
@@ -169,7 +143,7 @@ function SelectEpisodeModalContent(props: SelectEpisodeModalContentProps) {
   const onEpisodesSelectWrapper = useCallback(() => {
     const episodeIds: number[] = getSelectedIds(selectedState);
 
-    const selectedEpisodes = filteredItems.reduce((acc: Episode[], item) => {
+    const selectedEpisodes = items.reduce((acc: Episode[], item) => {
       if (episodeIds.indexOf(item.id) > -1) {
         acc.push(item);
       }
@@ -196,7 +170,7 @@ function SelectEpisodeModalContent(props: SelectEpisodeModalContentProps) {
     });
 
     onEpisodesSelect(mappedEpisodes);
-  }, [selectedIds, filteredItems, selectedState, onEpisodesSelect]);
+  }, [selectedIds, items, selectedState, onEpisodesSelect]);
 
   useEffect(
     () => {
@@ -229,51 +203,21 @@ function SelectEpisodeModalContent(props: SelectEpisodeModalContentProps) {
         className={styles.modalBody}
         scrollDirection={scrollDirections.NONE}
       >
-        <div>
-          <TextInput
-            className={styles.filterInput}
-            placeholder={translate('FilterEpisodesPlaceholder')}
-            name="filter"
-            value={filter}
-            autoFocus={true}
-            onChange={onFilterChange}
-          />
-
-          {/* IMPROVED: Add season selector for multi-season releases */}
-          {seasons.length > 1 && (
-            <div style={{ marginBottom: '10px', padding: '5px' }}>
-              <label htmlFor="seasonFilter" style={{ marginRight: '10px' }}>
-                {translate('FilterBySeason')}:
-              </label>
-              <select
-                id="seasonFilter"
-                value={selectedSeason ?? 'all'}
-                onChange={(e) =>
-                  setSelectedSeason(
-                    e.target.value === 'all' ? null : Number(e.target.value)
-                  )
-                }
-              >
-                <option value="all">
-                  {translate('All')} ({items.length} {translate('Episodes')})
-                </option>
-                {seasons.map((season) => (
-                  <option key={season} value={season}>
-                    {translate('Season')} {season} (
-                    {groupedBySeason[season].length} {translate('Episodes')})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
+        <TextInput
+          className={styles.filterInput}
+          placeholder={translate('FilterEpisodesPlaceholder')}
+          name="filter"
+          value={filter}
+          autoFocus={true}
+          onChange={onFilterChange}
+        />
 
         <Scroller className={styles.scroller} autoFocus={false}>
           {isFetching ? <LoadingIndicator /> : null}
 
           {error ? <div>{errorMessage}</div> : null}
 
-          {isPopulated && !!filteredItems.length ? (
+          {isPopulated && !!items.length ? (
             <Table
               columns={columns}
               selectAll={true}
@@ -285,7 +229,7 @@ function SelectEpisodeModalContent(props: SelectEpisodeModalContentProps) {
               onSelectAllChange={onSelectAllChange}
             >
               <TableBody>
-                {filteredItems.map((item) => {
+                {items.map((item) => {
                   return item.title.toLowerCase().includes(filter) ||
                     item.episodeNumber === filterEpisodeNumber ? (
                     <SelectEpisodeRow
@@ -305,7 +249,7 @@ function SelectEpisodeModalContent(props: SelectEpisodeModalContentProps) {
             </Table>
           ) : null}
 
-          {isPopulated && !filteredItems.length
+          {isPopulated && !items.length
             ? translate('NoEpisodesFoundForSelectedSeason')
             : null}
         </Scroller>

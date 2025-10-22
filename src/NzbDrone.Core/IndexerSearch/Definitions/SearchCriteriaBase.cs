@@ -21,7 +21,6 @@ namespace NzbDrone.Core.IndexerSearch.Definitions
         public virtual bool MonitoredEpisodesOnly { get; set; }
         public virtual bool UserInvokedSearch { get; set; }
         public virtual bool InteractiveSearch { get; set; }
-        public int? SeasonYear { get; set; }
 
         public List<string> AllSceneTitles => SceneTitles.Concat(CleanSceneTitles).Distinct().ToList();
         public List<string> CleanSceneTitles => SceneTitles.Select(GetCleanSceneTitle).Distinct().ToList();

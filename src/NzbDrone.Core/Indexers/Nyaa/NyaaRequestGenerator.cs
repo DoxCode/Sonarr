@@ -44,12 +44,10 @@ namespace NzbDrone.Core.Indexers.Nyaa
 
         public virtual IndexerPageableRequestChain GetSearchRequests(SeasonSearchCriteria searchCriteria)
         {
-            var seasonYear = searchCriteria.SeasonYear ?? searchCriteria.Series.Year;
-            _logger.Info("Nyaa SeasonSearchCriteria: Series={0}, Season={1}, Year={2}, SeasonYear={3}, SceneTitles=[{4}]",
+            _logger.Info("Nyaa SeasonSearchCriteria: Series={0}, Season={1}, Year={2}, SceneTitles=[{3}]",
                 searchCriteria.Series.Title,
                 searchCriteria.SeasonNumber,
                 searchCriteria.Series.Year,
-                seasonYear,
                 string.Join(", ", searchCriteria.SceneTitles));
 
             var pageableRequests = new IndexerPageableRequestChain();
@@ -66,12 +64,12 @@ namespace NzbDrone.Core.Indexers.Nyaa
                 }
             }
 
-            // New pattern: <Nombre serie> <Year> (only if season has a year)
-            if (seasonYear > 0)
+            // New pattern: <Nombre serie> <Year> (only if series has a year)
+            if (searchCriteria.Series.Year > 0)
             {
                 foreach (var searchTitle in searchCriteria.SceneTitles.Select(PrepareQuery))
                 {
-                    pageableRequests.Add(GetPagedRequests($"{searchTitle}+{seasonYear}"));
+                    pageableRequests.Add(GetPagedRequests($"{searchTitle}+{searchCriteria.Series.Year}"));
                 }
             }
 
@@ -115,14 +113,12 @@ namespace NzbDrone.Core.Indexers.Nyaa
 
         public virtual IndexerPageableRequestChain GetSearchRequests(AnimeSeasonSearchCriteria searchCriteria)
         {
-            var seasonYear = searchCriteria.SeasonYear ?? searchCriteria.Series.Year;
             var pageableRequests = new IndexerPageableRequestChain();
 
-            _logger.Info("Nyaa AnimeSeasonSearch: Series={0}, Season={1}, Year={2}, SeasonYear={3}, SceneTitles=[{4}]",
+            _logger.Info("Nyaa AnimeSeasonSearch: Series={0}, Season={1}, Year={2}, SceneTitles=[{3}]",
                 searchCriteria.Series.Title,
                 searchCriteria.SeasonNumber,
                 searchCriteria.Series.Year,
-                seasonYear,
                 string.Join(", ", searchCriteria.SceneTitles));
 
             foreach (var searchTitle in searchCriteria.SceneTitles.Select(PrepareQuery))
@@ -149,10 +145,10 @@ namespace NzbDrone.Core.Indexers.Nyaa
                     }
                 }
 
-                // New pattern: <Nombre serie> <Year> (now uses season year if available)
-                if (seasonYear > 0)
+                // New pattern: <Nombre serie> <Year> (only if series has a year)
+                if (searchCriteria.Series.Year > 0)
                 {
-                    var yearPattern = $"{titleTrimmed}+{seasonYear}";
+                    var yearPattern = $"{titleTrimmed}+{searchCriteria.Series.Year}";
                     _logger.Info("Nyaa AnimeSeasonSearch: Adding year pattern: {0}", yearPattern);
                     pageableRequests.Add(GetPagedRequests(yearPattern));
                 }
