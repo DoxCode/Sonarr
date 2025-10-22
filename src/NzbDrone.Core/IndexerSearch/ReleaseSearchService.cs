@@ -265,14 +265,6 @@ namespace NzbDrone.Core.IndexerSearch
                     }
                 }
 
-                // Validate anime Part mappings for consistency
-                // If the mapping references a specific "Part", ensure the episode belongs to that part
-                if (series.SeriesType == SeriesTypes.Anime && !ValidateAnimePartMapping(sceneMapping, episode))
-                {
-                    _logger.Debug("Skipping anime part mapping '{0}' for episode {1} due to part mismatch", sceneMapping.SearchTerm, episode);
-                    continue;
-                }
-
                 if (sceneMapping.SearchTerm == series.Title && sceneMapping.FilterRegex.IsNullOrWhiteSpace())
                 {
                     // Disable the implied mapping if we have an explicit mapping by the same name
@@ -320,64 +312,6 @@ namespace NzbDrone.Core.IndexerSearch
                     AbsoluteEpisodeNumber = episode.SceneSeasonNumber ?? episode.AbsoluteEpisodeNumber
                 };
             }
-        }
-
-        /// <summary>
-        /// Validates that an anime Part mapping is consistent with the episode's part.
-        /// For example, if a mapping references "Part 2", this validates that the episode is actually part of Part 2.
-        /// </summary>
-        private bool ValidateAnimePartMapping(SceneMapping sceneMapping, Episode episode)
-        {
-            if (sceneMapping == null || string.IsNullOrEmpty(sceneMapping.SearchTerm))
-            {
-                return true;
-            }
-
-            // Check if the search term references a specific part
-            var partMatch = System.Text.RegularExpressions.Regex.Match(
-                sceneMapping.SearchTerm,
-                @"Part\s*(\d+)",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-            if (!partMatch.Success)
-            {
-                return true; // No part reference, so validation passes
-            }
-
-            if (!int.TryParse(partMatch.Groups[1].Value, out var mappingPartNumber))
-            {
-                return true;
-            }
-
-            // Determine which part this episode belongs to based on FinaleType
-            var episodePartNumber = 0;
-
-            if (!string.IsNullOrEmpty(episode.FinaleType) &&
-                episode.FinaleType.Equals("midseason", StringComparison.OrdinalIgnoreCase))
-            {
-                // Midseason finale is part of the first part
-                episodePartNumber = 1;
-            }
-            else if (!string.IsNullOrEmpty(episode.FinaleType) &&
-                     (episode.FinaleType.Equals("season", StringComparison.OrdinalIgnoreCase) ||
-                      episode.FinaleType.Equals("series", StringComparison.OrdinalIgnoreCase)))
-            {
-                // Season/Series finale is part of the last part (typically Part 2)
-                // We'll be conservative and return true to allow it
-                return true;
-            }
-
-            // For episodes without explicit finale type, we need to infer the part
-            // Generally: episodes 1-12 are Part 1, episodes 13+ are Part 2
-            // But this is only a heuristic; we'll only enforce validation if we have clear finale markers
-            if (episodePartNumber == 0)
-            {
-                // No clear part marker found, allow the mapping
-                return true;
-            }
-
-            // Validate that the episode belongs to the part referenced in the mapping
-            return episodePartNumber == mappingPartNumber;
         }
 
         private async Task<List<DownloadDecision>> SearchSingle(Series series, Episode episode, bool monitoredOnly, bool userInvokedSearch, bool interactiveSearch)
@@ -468,56 +402,18 @@ namespace NzbDrone.Core.IndexerSearch
                 .Where(ep => ep.AirDateUtc.HasValue && ep.AirDateUtc.Value.Before(DateTime.UtcNow))
                 .ToList();
 
-            // Check if this season has multiple parts (e.g., Part 1 and Part 2)
-            var seasonParts = GetSeasonParts(episodesToSearch);
-            var hasMultipleParts = seasonParts.Count > 1;
-
-            if (hasMultipleParts)
-            {
-                _logger.Debug("Season {0} of {1} has {2} parts. Will search each part separately.", episodes.First().SeasonNumber, series.Title, seasonParts.Count);
-            }
-
             var seasonsToSearch = GetSceneSeasonMappings(series, episodesToSearch)
                 .GroupBy(ep => ep.SeasonNumber)
                 .Select(epList => epList.First())
                 .ToList();
 
-            // First: perform season (batch) searches
-            // If there are multiple parts, search each part separately to avoid mixing episodes from different parts
-            if (hasMultipleParts)
+             // First: perform season (batch) searches
+            foreach (var season in seasonsToSearch)
             {
-                for (var partIndex = 0; partIndex < seasonParts.Count; partIndex++)
-                {
-                    var partEpisodes = seasonParts[partIndex];
-                    var partNumber = partIndex + 1;
+                searchSpec.SeasonNumber = season.SeasonNumber;
 
-                    _logger.Debug("Searching Part {0} of season {1} with {2} episodes", partNumber, episodes.First().SeasonNumber, partEpisodes.Count);
-
-                    var partSearchSpec = Get<AnimeSeasonSearchCriteria>(series, partEpisodes, monitoredOnly, userInvokedSearch, interactiveSearch);
-
-                    // Set part information to help indexers search for specific parts
-                    partSearchSpec.SeasonPartNumber = partNumber;
-                    partSearchSpec.TotalSeasonParts = seasonParts.Count;
-
-                    foreach (var season in seasonsToSearch)
-                    {
-                        partSearchSpec.SeasonNumber = season.SeasonNumber;
-
-                        var decisions = await Dispatch(indexer => indexer.Fetch(partSearchSpec), partSearchSpec);
-                        downloadDecisions.AddRange(decisions);
-                    }
-                }
-            }
-            else
-            {
-                // Single part or no clear parts detected, search normally
-                foreach (var season in seasonsToSearch)
-                {
-                    searchSpec.SeasonNumber = season.SeasonNumber;
-
-                    var decisions = await Dispatch(indexer => indexer.Fetch(searchSpec), searchSpec);
-                    downloadDecisions.AddRange(decisions);
-                }
+                var decisions = await Dispatch(indexer => indexer.Fetch(searchSpec), searchSpec);
+                downloadDecisions.AddRange(decisions);
             }
 
             // If this is an interactive search, only search for season batches
@@ -546,14 +442,6 @@ namespace NzbDrone.Core.IndexerSearch
 
             if (!downloadDecisions.Any() || seasonHasFutureEpisodes || seasonRecentlyEnded)
             {
-                // If there are multiple parts and we have some decisions already, don't fall back to per-episode search
-                // as it may mix episodes from different parts. Only do fallback if we have no decisions yet.
-                if (hasMultipleParts && downloadDecisions.Any())
-                {
-                    _logger.Debug("Skipping per-episode fallback search for multi-part season because batch searches already returned results for at least one part");
-                    return DeDupeDecisions(downloadDecisions);
-                }
-
                 foreach (var episode in episodesToSearch)
                 {
                     // call per-episode anime search; keep isSeasonSearch=true to ensure criteria handling
@@ -716,69 +604,6 @@ namespace NzbDrone.Core.IndexerSearch
             }
 
             return Array.Empty<ReleaseInfo>();
-        }
-
-        /// <summary>
-        /// Detects seasonal parts (Part 1, Part 2, etc) in an anime season by analyzing the FinaleType field.
-        /// For example: episodes with FinaleType="midseason" mark the end of Part 1.
-        /// </summary>
-        private List<List<Episode>> GetSeasonParts(List<Episode> seasonEpisodes)
-        {
-            if (seasonEpisodes.Count == 0)
-            {
-                return new List<List<Episode>>();
-            }
-
-            var parts = new List<List<Episode>>();
-            var currentPart = new List<Episode>();
-
-            foreach (var episode in seasonEpisodes.OrderBy(e => e.EpisodeNumber))
-            {
-                currentPart.Add(episode);
-
-                // Check if this episode marks the end of a part
-                if (!string.IsNullOrEmpty(episode.FinaleType) &&
-                    (episode.FinaleType.Equals("midseason", StringComparison.OrdinalIgnoreCase) ||
-                     episode.FinaleType.Equals("season", StringComparison.OrdinalIgnoreCase)))
-                {
-                    // End of a part detected
-                    parts.Add(new List<Episode>(currentPart));
-                    currentPart.Clear();
-
-                    // If it's a season finale, we're done
-                    if (episode.FinaleType.Equals("season", StringComparison.OrdinalIgnoreCase))
-                    {
-                        break;
-                    }
-                }
-            }
-
-            // Add any remaining episodes as the last part
-            if (currentPart.Count > 0)
-            {
-                parts.Add(currentPart);
-            }
-
-            return parts.Count > 0 ? parts : new List<List<Episode>> { seasonEpisodes };
-        }
-
-        /// <summary>
-        /// Determines which part an episode belongs to based on FinaleType markers.
-        /// Returns the part number (1-based), or 0 if undetermined.
-        /// </summary>
-        private int GetEpisodePartNumber(Episode episode, List<Episode> seasonEpisodes)
-        {
-            var parts = GetSeasonParts(seasonEpisodes);
-
-            for (var i = 0; i < parts.Count; i++)
-            {
-                if (parts[i].Any(e => e.Id == episode.Id))
-                {
-                    return i + 1;
-                }
-            }
-
-            return 0;
         }
 
         private List<DownloadDecision> DeDupeDecisions(List<DownloadDecision> decisions)

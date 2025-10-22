@@ -118,55 +118,17 @@ namespace NzbDrone.Core.Indexers.Nyaa
             var seasonYear = searchCriteria.SeasonYear ?? searchCriteria.Series.Year;
             var pageableRequests = new IndexerPageableRequestChain();
 
-            _logger.Info("Nyaa AnimeSeasonSearch: Series={0}, Season={1}, Year={2}, SeasonYear={3}, Part={4}/{5}, SceneTitles=[{6}]",
+            _logger.Info("Nyaa AnimeSeasonSearch: Series={0}, Season={1}, Year={2}, SeasonYear={3}, SceneTitles=[{4}]",
                 searchCriteria.Series.Title,
                 searchCriteria.SeasonNumber,
                 searchCriteria.Series.Year,
                 seasonYear,
-                searchCriteria.SeasonPartNumber,
-                searchCriteria.TotalSeasonParts,
                 string.Join(", ", searchCriteria.SceneTitles));
 
             foreach (var searchTitle in searchCriteria.SceneTitles.Select(PrepareQuery))
             {
                 var titleTrimmed = Regex.Replace(searchTitle, @"[-,.\?!:;/]", "+").Trim();
 
-                // If this is a multi-part search, add Part-specific patterns first
-                if (searchCriteria.SeasonPartNumber > 0 && searchCriteria.TotalSeasonParts > 1)
-                {
-                    var partKeyword = $"Part+{searchCriteria.SeasonPartNumber}";
-
-                    if (Settings.AnimeStandardFormatSearch && searchCriteria.SeasonNumber > 0)
-                    {
-                        // Pattern: <Series> Part 1 sXX
-                        var partSeasonPattern = $"{titleTrimmed}+{partKeyword}+s{searchCriteria.SeasonNumber:00}";
-                        _logger.Info("Nyaa AnimeSeasonSearch: Adding part+season pattern: {0}", partSeasonPattern);
-                        pageableRequests.Add(GetPagedRequests(partSeasonPattern));
-
-                        // Pattern: <Series> Part 1 Season XX
-                        var partSeasonAltPattern = $"{titleTrimmed}+{partKeyword}+Season+{searchCriteria.SeasonNumber}";
-                        _logger.Info("Nyaa AnimeSeasonSearch: Adding part+season (alt) pattern: {0}", partSeasonAltPattern);
-                        pageableRequests.Add(GetPagedRequests(partSeasonAltPattern));
-                    }
-
-                    // Pattern: <Series> Part 1 (for first season only)
-                    if (searchCriteria.SeasonNumber == 1)
-                    {
-                        var partOnlyPattern = $"{titleTrimmed}+{partKeyword}";
-                        _logger.Info("Nyaa AnimeSeasonSearch: Adding part-only pattern: {0}", partOnlyPattern);
-                        pageableRequests.Add(GetPagedRequests(partOnlyPattern));
-                    }
-
-                    // Pattern: <Series> Part 1 <Year> (if season has a year)
-                    if (seasonYear > 0)
-                    {
-                        var partYearPattern = $"{titleTrimmed}+{partKeyword}+{seasonYear}";
-                        _logger.Info("Nyaa AnimeSeasonSearch: Adding part+year pattern: {0}", partYearPattern);
-                        pageableRequests.Add(GetPagedRequests(partYearPattern));
-                    }
-                }
-
-                // Add standard patterns as fallback
                 if (Settings.AnimeStandardFormatSearch && searchCriteria.SeasonNumber > 0)
                 {
                     // Original pattern: <Nombre serie> sXX
