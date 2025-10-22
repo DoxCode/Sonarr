@@ -24,6 +24,7 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport.Manual
     {
         List<ManualImportItem> GetMediaFiles(int seriesId, int? seasonNumber);
         List<ManualImportItem> GetMediaFiles(string path, string downloadId, int? seriesId, bool filterExistingFiles);
+        List<ManualImportItem> GetMediaFiles(string path, string downloadId, int? seriesId, int? seasonNumber, bool filterExistingFiles);
         ManualImportItem ReprocessItem(string path, string downloadId, int seriesId, int? seasonNumber, List<int> episodeIds, string releaseGroup, QualityModel quality, List<Language> languages, int indexerFlags, ReleaseType releaseType);
     }
 
@@ -112,30 +113,49 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport.Manual
 
         public List<ManualImportItem> GetMediaFiles(string path, string downloadId, int? seriesId, bool filterExistingFiles)
         {
+            return GetMediaFiles(path, downloadId, seriesId, null, filterExistingFiles);
+        }
+
+        public List<ManualImportItem> GetMediaFiles(string path, string downloadId, int? seriesId, int? seasonNumber, bool filterExistingFiles)
+        {
+            _logger.Info("╔═══════════════════════════════════════════════════════════╗");
+            _logger.Info("║ GetMediaFiles - INICIANDO                                ║");
+            _logger.Info("╚═══════════════════════════════════════════════════════════╝");
+            _logger.Info("Path: {0}", path);
+            _logger.Info("DownloadId: {0}", downloadId ?? "NULL");
+            _logger.Info("SeriesId: {0}", seriesId);
+            _logger.Info("SeasonNumber: {0}", seasonNumber?.ToString() ?? "NULL");
+            _logger.Info("FilterExistingFiles: {0}", filterExistingFiles);
+
             if (downloadId.IsNotNullOrWhiteSpace())
             {
                 var trackedDownload = _trackedDownloadService.Find(downloadId);
 
                 if (trackedDownload == null)
                 {
+                    _logger.Warn("❌ Tracked download no encontrado");
                     return new List<ManualImportItem>();
                 }
 
                 path = trackedDownload.ImportItem.OutputPath.FullPath;
+                _logger.Info("✓ Tracked download encontrado, path actualizado: {0}", path);
             }
 
             if (!_diskProvider.FolderExists(path))
             {
                 if (!_diskProvider.FileExists(path))
                 {
+                    _logger.Warn("❌ Path no existe (ni carpeta ni archivo): {0}", path);
                     return new List<ManualImportItem>();
                 }
 
+                _logger.Info("📄 Es un archivo individual");
                 var rootFolder = Path.GetDirectoryName(path);
                 return new List<ManualImportItem> { ProcessFile(rootFolder, rootFolder, path, downloadId) };
             }
 
-            return ProcessFolder(path, path, downloadId, seriesId, filterExistingFiles);
+            _logger.Info("📁 Es una carpeta");
+            return ProcessFolder(path, path, downloadId, seriesId, seasonNumber, filterExistingFiles);
         }
 
         public ManualImportItem ReprocessItem(string path, string downloadId, int seriesId, int? seasonNumber, List<int> episodeIds, string releaseGroup, QualityModel quality, List<Language> languages, int indexerFlags, ReleaseType releaseType)
@@ -233,6 +253,11 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport.Manual
 
         private List<ManualImportItem> ProcessFolder(string rootFolder, string baseFolder, string downloadId, int? seriesId, bool filterExistingFiles)
         {
+            return ProcessFolder(rootFolder, baseFolder, downloadId, seriesId, null, filterExistingFiles);
+        }
+
+        private List<ManualImportItem> ProcessFolder(string rootFolder, string baseFolder, string downloadId, int? seriesId, int? seasonNumber, bool filterExistingFiles)
+        {
             DownloadClientItem downloadClientItem = null;
             Series series = null;
 
@@ -283,13 +308,88 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport.Manual
                 var subfolders = _diskScanService.FilterPaths(rootFolder, _diskProvider.GetDirectories(baseFolder));
 
                 var processedFiles = files.Select(file => ProcessFile(rootFolder, baseFolder, file, downloadId));
-                var processedFolders = subfolders.SelectMany(subfolder => ProcessFolder(rootFolder, subfolder, downloadId, null, filterExistingFiles));
+                var processedFolders = subfolders.SelectMany(subfolder => ProcessFolder(rootFolder, subfolder, downloadId, null, seasonNumber, filterExistingFiles));
 
                 return processedFiles.Concat(processedFolders).Where(i => i != null).ToList();
             }
 
             var folderInfo = Parser.Parser.ParseTitle(directoryInfo.Name);
             var seriesFiles = _diskScanService.FilterPaths(rootFolder, _diskScanService.GetVideoFiles(baseFolder).ToList());
+
+            _logger.Info("ProcessFolder - Carpeta: {0}", directoryInfo.Name);
+            _logger.Info("ProcessFolder - Serie identificada: {0} (ID: {1})", series.Title, series.Id);
+            _logger.Info("ProcessFolder - FolderInfo ParsedEpisodeInfo: IsMultiSeason={0}, DetectedSeasons={1}",
+                folderInfo?.IsMultiSeason ?? false,
+                folderInfo?.DetectedSeasons != null ? string.Join(",", folderInfo.DetectedSeasons) : "NULL");
+            _logger.Info("ProcessFolder - Archivos de video encontrados: {0}", seriesFiles.Count);
+            foreach (var file in seriesFiles)
+            {
+                _logger.Info("  - {0}", Path.GetFileName(file));
+            }
+
+            // CRITICAL: Si es multi-temporada y NO se especificó seasonNumber,
+            // detectar automáticamente qué temporadas hay en los archivos
+            if (!seasonNumber.HasValue && folderInfo?.IsMultiSeason == true && folderInfo?.DetectedSeasons?.Count > 0)
+            {
+                _logger.Info("⚠️ DETECCIÓN AUTOMÁTICA: Carpeta es multi-temporada con temporadas: {0}",
+                    string.Join(",", folderInfo.DetectedSeasons));
+                _logger.Info("   Procesando cada temporada POR SEPARADO...");
+
+                var allItems = new List<ManualImportItem>();
+
+                // Procesar cada temporada detectada por separado
+                foreach (var detectedSeason in folderInfo.DetectedSeasons.OrderBy(s => s))
+                {
+                    _logger.Info("   ┌─ Procesando temporada {0}...", detectedSeason.ToString("D2"));
+
+                    var seasonFiles = FilterFilesBySeason(seriesFiles, detectedSeason);
+
+                    _logger.Info("   │  Archivos para S{0}: {1}", detectedSeason.ToString("D2"), seasonFiles.Count);
+
+                    if (seasonFiles.Any())
+                    {
+                        var seasonDecisions = _importDecisionMaker.GetImportDecisions(
+                            seasonFiles,
+                            series,
+                            downloadClientItem,
+                            folderInfo,
+                            SceneSource(series, baseFolder),
+                            filterExistingFiles);
+
+                        var seasonItems = seasonDecisions
+                            .Select(decision => MapItem(decision, rootFolder, downloadId, directoryInfo.Name))
+                            .ToList();
+
+                        allItems.AddRange(seasonItems);
+
+                        _logger.Info("   └─ ✓ {0} items procesados para S{1}", seasonItems.Count, detectedSeason.ToString("D2"));
+                    }
+                    else
+                    {
+                        _logger.Info("   └─ ❌ Sin archivos después del filtrado");
+                    }
+                }
+
+                _logger.Info("RESULTADO FINAL: {0} items totales de {1} temporadas",
+                    allItems.Count,
+                    folderInfo.DetectedSeasons.Count);
+
+                return allItems;
+            }
+
+            // IMPROVED: Filter files by season if specified
+            if (seasonNumber.HasValue)
+            {
+                var beforeFilter = seriesFiles.Count;
+                seriesFiles = FilterFilesBySeason(seriesFiles, seasonNumber.Value);
+                _logger.Info("ProcessFolder - Filtrado por S{0}: {1} → {2} archivos",
+                    seasonNumber.Value.ToString("D2"),
+                    beforeFilter,
+                    seriesFiles.Count);
+            }
+
+            _logger.Info("ProcessFolder - Procesando {0} archivos con ImportDecisionMaker", seriesFiles.Count);
+
             var decisions = _importDecisionMaker.GetImportDecisions(seriesFiles, series, downloadClientItem, folderInfo, SceneSource(series, baseFolder), filterExistingFiles);
 
             return decisions.Select(decision => MapItem(decision, rootFolder, downloadId, directoryInfo.Name)).ToList();
@@ -415,6 +515,13 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport.Manual
             item.Name = Path.GetFileNameWithoutExtension(decision.LocalEpisode.Path);
             item.DownloadId = downloadId;
 
+            _logger.Info("MapItem - Archivo: {0}", Path.GetFileName(decision.LocalEpisode.Path));
+            _logger.Info("  Episodes count: {0}", decision.LocalEpisode.Episodes.Count);
+            if (decision.LocalEpisode.Episodes.Any())
+            {
+                _logger.Info("  Episodes: {0}", string.Join(",", decision.LocalEpisode.Episodes.Select(e => $"S{e.SeasonNumber:D2}E{e.EpisodeNumber:D2}")));
+            }
+
             if (decision.LocalEpisode.Episodes.Any() && decision.LocalEpisode.Episodes.Select(c => c.SeasonNumber).Distinct().Count() == 1)
             {
                 var seasons = decision.LocalEpisode.Episodes.Select(c => c.SeasonNumber).Distinct().ToList();
@@ -431,6 +538,7 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport.Manual
                 {
                     item.SeasonNumber = decision.LocalEpisode.SeasonNumber;
                     item.Episodes = decision.LocalEpisode.Episodes;
+                    _logger.Info("  ✓ Asignado Season {0}", item.SeasonNumber);
                 }
             }
 
@@ -616,6 +724,125 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport.Manual
                     _eventAggregator.PublishEvent(new DownloadCompletedEvent(trackedDownload, importedSeries.Id, episodeFiles, importedResults.First().ImportDecision.LocalEpisode.Release));
                 }
             }
+        }
+
+        private List<string> FilterFilesBySeason(List<string> files, int seasonNumber)
+        {
+            _logger.Info("┌─ FilterFilesBySeason - INICIANDO");
+            _logger.Info("│  Season Solicitada: S{0:D2}", seasonNumber);
+            _logger.Info("│  Total archivos a filtrar: {0}", files.Count);
+
+            var filtered = new List<string>();
+            var excluded = new List<string>();
+
+            foreach (var file in files)
+            {
+                try
+                {
+                    var parsedInfo = Parser.Parser.ParsePath(file);
+                    var fileName = Path.GetFileName(file);
+
+                    if (parsedInfo == null)
+                    {
+                        _logger.Info("│  ❌ {0}: NO SE PUDO PARSEAR", fileName);
+                        excluded.Add(file);
+                        continue;
+                    }
+
+                    _logger.Info("│  📄 {0}: Parsed S{1:D2}E{2}",
+                        fileName,
+                        parsedInfo.SeasonNumber,
+                        parsedInfo.EpisodeNumbers?.Length > 0 ? string.Join(",", parsedInfo.EpisodeNumbers) : "??");
+
+                    // CRITICAL: If file has explicit season number that doesn't match, EXCLUDE it
+                    if (parsedInfo != null && parsedInfo.EpisodeNumbers != null && parsedInfo.EpisodeNumbers.Length > 0)
+                    {
+                        // File has explicit S##E## pattern
+                        if (parsedInfo.SeasonNumber == seasonNumber)
+                        {
+                            _logger.Info("│     ✓ INCLUIR: Season coincide");
+                            filtered.Add(file);
+                            continue;
+                        }
+                        else if (parsedInfo.SeasonNumber > 0)
+                        {
+                            // File has explicit season number that doesn't match
+                            _logger.Info("│     ✗ EXCLUIR: Season {0} ≠ {1}",
+                                parsedInfo.SeasonNumber,
+                                seasonNumber);
+                            excluded.Add(file);
+                            continue;
+                        }
+                    }
+
+                    // If file is multi-season, exclude files that don't belong to requested season
+                    if (parsedInfo?.IsMultiSeason == true && parsedInfo.DetectedSeasons != null && parsedInfo.DetectedSeasons.Count > 0)
+                    {
+                        if (!parsedInfo.DetectedSeasons.Contains(seasonNumber))
+                        {
+                            _logger.Info("│     ✗ EXCLUIR: Multi-season [{0}], no contiene S{1:D2}",
+                                string.Join(",", parsedInfo.DetectedSeasons),
+                                seasonNumber);
+                            excluded.Add(file);
+                            continue;
+                        }
+                    }
+
+                    // Check if path contains season folder indicator - more specific patterns
+                    var fileNameLower = Path.GetFileName(file).ToLower();
+                    var folderPath = Path.GetDirectoryName(file).ToLower();
+
+                    var seasonPatterns = new[]
+                    {
+                        $"s{seasonNumber:d2}e",      // S01E01
+                        $"s {seasonNumber:d2}e",     // S 01E01
+                        $"s{seasonNumber:d2} ",      // S01 E01
+                        $"season {seasonNumber}",    // Season 1
+                        $"season{seasonNumber}",     // Season1
+                        $"s{seasonNumber} ",         // S1 (for single digit)
+                        $" s{seasonNumber}e"         // [space]S1E
+                    };
+
+                    if (seasonPatterns.Any(p => fileNameLower.Contains(p) || folderPath.Contains(p)))
+                    {
+                        _logger.Info("│     ✓ INCLUIR: Pattern match");
+                        filtered.Add(file);
+                        continue;
+                    }
+
+                    // Check if the folder name indicates the season
+                    var folderName = Path.GetDirectoryName(file);
+                    var folderInfo = Parser.Parser.ParseTitle(folderName);
+                    if (folderInfo?.SeasonNumber == seasonNumber && !folderInfo.IsMultiSeason)
+                    {
+                        _logger.Info("│     ✓ INCLUIR: Folder indica season");
+                        filtered.Add(file);
+                        continue;
+                    }
+
+                    // If we reach here, file doesn't clearly belong to requested season
+                    _logger.Info("│     ✗ EXCLUIR: No coincide con criterios");
+                    excluded.Add(file);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn("│  ⚠️  Error parsing {0}: {1}", Path.GetFileName(file), ex.Message);
+                    excluded.Add(file);
+                }
+            }
+
+            _logger.Info("│");
+            _logger.Info("└─ FilterFilesBySeason - FINALIZADO");
+            _logger.Info("   Incluidos: {0}, Excluidos: {1}", filtered.Count, excluded.Count);
+
+            // Only return all files if we filtered everything out (fallback for edge cases)
+            if (!filtered.Any())
+            {
+                _logger.Warn("   ⚠️  Ningún archivo coincide, devolviendo TODOS como fallback");
+                return files;
+            }
+
+            return filtered;
         }
     }
 }

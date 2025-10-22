@@ -31,6 +31,7 @@ namespace NzbDrone.Core.Parser.Model
         public int SeasonPart { get; set; }
         public string ReleaseTokens { get; set; }
         public int? DailyPart { get; set; }
+        public List<int> DetectedSeasons { get; set; }
 
         public ParsedEpisodeInfo()
         {
@@ -38,6 +39,7 @@ namespace NzbDrone.Core.Parser.Model
             AbsoluteEpisodeNumbers = Array.Empty<int>();
             SpecialAbsoluteEpisodeNumbers = Array.Empty<decimal>();
             Languages = new List<Language>();
+            DetectedSeasons = new List<int>();
         }
 
         public bool IsDaily

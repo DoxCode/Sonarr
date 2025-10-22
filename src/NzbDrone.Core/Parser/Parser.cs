@@ -698,10 +698,11 @@ namespace NzbDrone.Core.Parser
             {
                 if (!ValidateBeforeParsing(title))
                 {
+                    Logger.Debug("ParseTitle - Validation failed for: {0}", title);
                     return null;
                 }
 
-                Logger.Debug("Parsing string '{0}'", title);
+                Logger.Debug("ParseTitle - Input: '{0}'", title);
 
                 if (ReversedTitleRegex.IsMatch(title))
                 {
@@ -799,6 +800,12 @@ namespace NzbDrone.Core.Parser
                                 {
                                     Logger.Debug("Release Hash parsed: {0}", result.ReleaseHash);
                                 }
+
+                                // CRITICAL DEBUG: Final result
+                                Logger.Debug("ParseTitle RESULT - Season={0}, Episodes={1}, SeriesTitle={2}",
+                                    result.SeasonNumber,
+                                    result.EpisodeNumbers != null ? string.Join(",", result.EpisodeNumbers) : "NONE",
+                                    result.SeriesTitle);
 
                                 return result;
                             }
@@ -1048,6 +1055,11 @@ namespace NzbDrone.Core.Parser
                         var first = ParseNumber(episodeCaptures.First().Value);
                         var last = ParseNumber(episodeCaptures.Last().Value);
 
+                        Logger.Debug("ParseMatchCollection - Episode captures: first={0}, last={1}, captures=[{2}]",
+                            first,
+                            last,
+                            string.Join(",", episodeCaptures.Select(c => c.Value)));
+
                         if (first > last)
                         {
                             return null;
@@ -1055,6 +1067,9 @@ namespace NzbDrone.Core.Parser
 
                         var count = last - first + 1;
                         result.EpisodeNumbers = Enumerable.Range(first, count).ToArray();
+
+                        Logger.Debug("ParseMatchCollection - Assigned EpisodeNumbers: {0}",
+                            string.Join(",", result.EpisodeNumbers));
 
                         lastSeasonEpisodeStringIndex = Math.Max(lastSeasonEpisodeStringIndex, episodeCaptures.Last().EndIndex());
 
@@ -1152,6 +1167,9 @@ namespace NzbDrone.Core.Parser
                 if (seasons.Distinct().Count() > 1)
                 {
                     result.IsMultiSeason = true;
+
+                    // Store all detected seasons for context-aware filtering
+                    result.DetectedSeasons = seasons.Distinct().OrderBy(s => s).ToList();
                 }
 
                 if (seasons.Any())

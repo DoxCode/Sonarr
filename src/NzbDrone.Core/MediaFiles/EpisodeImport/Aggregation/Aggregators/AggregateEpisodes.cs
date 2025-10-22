@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using NLog;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Core.Download;
 using NzbDrone.Core.Parser;
@@ -13,10 +15,12 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport.Aggregation.Aggregators
         public int Order => 1;
 
         private readonly IParsingService _parsingService;
+        private readonly Logger _logger;
 
-        public AggregateEpisodes(IParsingService parsingService)
+        public AggregateEpisodes(IParsingService parsingService, Logger logger)
         {
             _parsingService = parsingService;
+            _logger = logger;
         }
 
         public LocalEpisode Aggregate(LocalEpisode localEpisode, DownloadClientItem downloadClientItem)
@@ -31,6 +35,14 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport.Aggregation.Aggregators
             var parsedEpisodeInfo = localEpisode.FileEpisodeInfo;
             var downloadClientEpisodeInfo = localEpisode.DownloadClientEpisodeInfo;
             var folderEpisodeInfo = localEpisode.FolderEpisodeInfo;
+
+            // CRITICAL FIX: ALWAYS prefer FileEpisodeInfo if it has explicit season/episode numbers
+            // This is the KEY FIX for multi-season torrents
+            if (parsedEpisodeInfo?.EpisodeNumbers?.Length > 0 &&
+                parsedEpisodeInfo.SeasonNumber > 0)
+            {
+                return parsedEpisodeInfo;
+            }
 
             if (!localEpisode.OtherVideoFiles && !SceneChecker.IsSceneTitle(Path.GetFileNameWithoutExtension(localEpisode.Path)))
             {
@@ -77,6 +89,13 @@ namespace NzbDrone.Core.MediaFiles.EpisodeImport.Aggregation.Aggregators
             if (ValidateParsedEpisodeInfo.ValidateForSeriesType(bestEpisodeInfoForEpisodes, localEpisode.Series, isMediaFile))
             {
                 var episodes = _parsingService.GetEpisodes(bestEpisodeInfoForEpisodes, localEpisode.Series, localEpisode.SceneSource);
+
+                if (!episodes.Empty())
+                {
+                    var fileName = Path.GetFileNameWithoutExtension(localEpisode.Path);
+                    var episodeMapping = string.Join(", ", episodes.Select(e => $"S{e.SeasonNumber:D2}E{e.EpisodeNumber:D2}"));
+                    _logger.Info("{0} mapeado a -> {1}", fileName, episodeMapping);
+                }
 
                 if (episodes.Empty() && bestEpisodeInfoForEpisodes.IsPossibleSpecialEpisode)
                 {

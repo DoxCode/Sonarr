@@ -498,6 +498,13 @@ namespace NzbDrone.Core.IndexerSearch
             spec.UserInvokedSearch = userInvokedSearch;
             spec.InteractiveSearch = interactiveSearch;
 
+            // Extract season year from first episode's air date if available
+            var firstEpisode = episodes.FirstOrDefault();
+            if (firstEpisode?.AirDateUtc.HasValue == true)
+            {
+                spec.SeasonYear = firstEpisode.AirDateUtc.Value.Year;
+            }
+
             if (!spec.SceneTitles.Contains(series.Title, StringComparer.InvariantCultureIgnoreCase))
             {
                 spec.SceneTitles.Add(series.Title);
@@ -520,6 +527,12 @@ namespace NzbDrone.Core.IndexerSearch
             spec.UserInvokedSearch = userInvokedSearch;
             spec.InteractiveSearch = interactiveSearch;
 
+            // Extract season year from episode's air date if available
+            if (mapping.Episode?.AirDateUtc.HasValue == true)
+            {
+                spec.SeasonYear = mapping.Episode.AirDateUtc.Value.Year;
+            }
+
             return spec;
         }
 
@@ -536,6 +549,13 @@ namespace NzbDrone.Core.IndexerSearch
             spec.MonitoredEpisodesOnly = monitoredOnly;
             spec.UserInvokedSearch = userInvokedSearch;
             spec.InteractiveSearch = interactiveSearch;
+
+            // Extract season year from first episode's air date if available
+            var firstEpisode = mapping.Episodes.FirstOrDefault();
+            if (firstEpisode?.AirDateUtc.HasValue == true)
+            {
+                spec.SeasonYear = firstEpisode.AirDateUtc.Value.Year;
+            }
 
             return spec;
         }
