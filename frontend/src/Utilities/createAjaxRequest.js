@@ -45,6 +45,10 @@ export default function createAjaxRequest(originalAjaxOptions) {
     addContentType(ajaxOptions);
   }
 
+  if (ajaxOptions.timeout == null) {
+    ajaxOptions.timeout = 0;
+  }
+
   const request = $.ajax({
     xhr: () => requestXHR,
     ...ajaxOptions
