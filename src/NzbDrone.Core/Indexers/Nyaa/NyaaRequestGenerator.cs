@@ -121,42 +121,172 @@ namespace NzbDrone.Core.Indexers.Nyaa
                 searchCriteria.Series.Year,
                 string.Join(", ", searchCriteria.SceneTitles));
 
-            foreach (var searchTitle in searchCriteria.SceneTitles.Select(PrepareQuery))
-            {
-                var titleTrimmed = Regex.Replace(searchTitle, @"[-,.\?!:;/]", "+").Trim();
+            // Checkear searchCriteria.SceneTitles, transformarlo a minusculas y comprobar que no hay repetidos
+            var filteredTitles = searchCriteria.SceneTitles
+                .Select(title => Regex.Replace(title.ToLowerInvariant(), @"[-,.\?!:;/()'\""]+", "+").Trim())
+                .Distinct()
+                .ToList();
 
+            var endTitles = new List<string>();
+
+            var numberEpisodesSeason = searchCriteria.Episodes.Count;
+            var partsEpisodes = new List<int> { 0 };
+
+            partsEpisodes.AddRange(searchCriteria.Episodes.Where(episode => episode.FinaleType == "midseason" || episode.FinaleType == "season" || episode.FinaleType == "series").Select(e => e.EpisodeNumber).ToList());
+
+            if (partsEpisodes.Count <= 2)
+            {
+                filteredTitles = filteredTitles.Where(t => !Regex.IsMatch(t.ToLowerInvariant(), @"part\+\d+")).ToList();
+            }
+
+            var partFormed = false;
+
+            foreach (var searchTitle in filteredTitles.Select(PrepareQuery))
+            {
                 if (Settings.AnimeStandardFormatSearch && searchCriteria.SeasonNumber > 0)
                 {
-                    // Original pattern: <Nombre serie> sXX
-                    var originalPattern = $"{titleTrimmed}+s{searchCriteria.SeasonNumber:00}";
-                    _logger.Info("Nyaa AnimeSeasonSearch: Adding original pattern: {0}", originalPattern);
-                    pageableRequests.Add(GetPagedRequests(originalPattern));
-
-                    // New pattern: <Nombre serie> Season XX
-                    var seasonPattern = $"{titleTrimmed}+Season+{searchCriteria.SeasonNumber}";
-                    _logger.Info("Nyaa AnimeSeasonSearch: Adding season pattern: {0}", seasonPattern);
-                    pageableRequests.Add(GetPagedRequests(seasonPattern));
-
-                    if (searchCriteria.SeasonNumber == 1)
+                    if (searchTitle.ToUpper().Contains(" S" + searchCriteria.SeasonNumber))
                     {
-                        var firstSeason = $"{titleTrimmed}";
-                        pageableRequests.Add(GetPagedRequests(firstSeason));
-                        _logger.Info("Nyaa AnimeSeasonSearch: Adding first season pattern: {0}", firstSeason);
+                        // Original pattern: <Nombre serie> sXX
+                        var originalPattern = $"{searchTitle}+s{searchCriteria.SeasonNumber:00}";
+
+                        // pageableRequests.Add(GetPagedRequests(originalPattern));
+                        endTitles.Add(originalPattern);
                     }
+
+                    if (searchTitle.ToLower().Contains("part") && !partFormed)
+                    {
+                        var partMatch = Regex.Match(searchTitle.ToLower(), @"\+part\+(\d+)");
+                        if (partMatch.Success)
+                        {
+                            var partNumber = int.Parse(partMatch.Groups[1].Value);
+
+                            var titleWithoutPart = Regex.Replace(searchTitle.ToLower(), @"\+part\+\d+", "");
+
+                            if (partsEpisodes.Count > 2)
+                            {
+                                for (var itr = 1; itr < partsEpisodes.Count; itr++)
+                                {
+                                    var ep = partsEpisodes[itr] - partsEpisodes[itr - 1];
+                                    endTitles.Add(titleWithoutPart + "+\"1-" + ep + "\"");
+                                    endTitles.Add(titleWithoutPart + "+\"1 ~ " + ep + "\"");
+                                }
+                            }
+
+                            partFormed = true;
+                        }
+
+                        continue;
+                    }
+
+                    endTitles.Add(searchTitle + "+BATCH");
+                    endTitles.Add(searchTitle + "+\"1-" + numberEpisodesSeason + "\"");
+                    endTitles.Add(searchTitle + "+\"1 ~ " + numberEpisodesSeason + "\"");
                 }
 
-                // New pattern: <Nombre serie> <Year> (only if series has a year)
-                if (searchCriteria.Series.Year > 0)
+                // pageableRequests.Add(GetPagedRequests(searchTitle));
+                // endTitles.Add(searchTitle);
+            }
+
+            /*
+            if (searchCriteria.SeasonNumber > 1)
+            {
+                // --
+                endTitles = endTitles.Where(t => t.ToLower().Contains("season")
+                                            || !t.StartsWith("season", System.StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            */
+
+            if (searchCriteria.SeasonNumber > 1)
+            {
+                var hasSeasonPattern = endTitles.Any(t =>
+                    Regex.IsMatch(t.ToLower(), $@"\+s{searchCriteria.SeasonNumber:00}(?:\+|$)") ||
+                    Regex.IsMatch(t.ToLower(), $@"\+s{searchCriteria.SeasonNumber}(?:\+|$)"));
+
+                var hasSeasonKeyword = endTitles.Any(t =>
+                    Regex.IsMatch(t.ToLower(), @"\+season\+\d+(?:\+|$)"));
+
+                if (hasSeasonKeyword && !hasSeasonPattern)
                 {
-                    var yearPattern = $"{titleTrimmed}+{searchCriteria.Series.Year}";
-                    _logger.Info("Nyaa AnimeSeasonSearch: Adding year pattern: {0}", yearPattern);
-                    pageableRequests.Add(GetPagedRequests(yearPattern));
+                    var newPatterns = new List<string>();
+                    foreach (var title in endTitles.Where(t => Regex.IsMatch(t.ToLower(), @"\+season\+\d+(?:\+|$)")).ToList())
+                    {
+                        // Reemplazar "season X" por "sXX"
+                        var newTitle = Regex.Replace(title.ToLower(), @"\+season\+\d+(?=\+|$)", $"+s{searchCriteria.SeasonNumber:00}");
+                        newPatterns.Add(newTitle);
+                    }
+
+                    endTitles.AddRange(newPatterns);
                 }
             }
 
+            endTitles = endTitles.Select(title =>
+            {
+                var parts = title.Split(new[] { '+' }, System.StringSplitOptions.RemoveEmptyEntries);
+                var distinctParts = parts.Distinct().ToList();
+                return string.Join("+", distinctParts);
+            }).ToList();
+
+            var uniqueTitles = new List<string>();
+            foreach (var title in endTitles)
+            {
+                var titleParts = title.Split(new[] { '+' }, System.StringSplitOptions.RemoveEmptyEntries)
+                    .OrderBy(p => p)
+                    .ToList();
+                var titleKey = string.Join("+", titleParts);
+
+                if (!uniqueTitles.Any(t =>
+                {
+                    var existingParts = t.Split(new[] { '+' }, System.StringSplitOptions.RemoveEmptyEntries)
+                        .OrderBy(p => p)
+                        .ToList();
+                    var existingKey = string.Join("+", existingParts);
+                    return existingKey == titleKey;
+                }))
+                {
+                    uniqueTitles.Add(title);
+                }
+            }
+
+            foreach (var finalTitle in uniqueTitles.Distinct())
+            {
+                pageableRequests.Add(GetPagedRequests(finalTitle));
+                _logger.Info("Nyaa AnimeSeasonSearch: Final pattern: {0}", finalTitle);
+            }
+
+            // pageableRequests.Add(GetPagedRequests("Spy x Family"));
             _logger.Info("Nyaa AnimeSeasonSearch: Generated {0} search requests in {1} tiers", pageableRequests.GetAllTiers().Count(), pageableRequests.Tiers);
             return pageableRequests;
         }
+
+        /*
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spyxfamily+BATCH
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spyxfamily+"1-12"
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spyxfamily+"1 ~ 12"
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spyxfamily
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy×family+BATCH
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy×family+"1-12"
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy×family+"1 ~ 12"
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy×family
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family+part+2+BATCH
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family+part+2
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family+s2+BATCH
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family+s2+"1-12"
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family+s2+"1 ~ 12"
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family+s2
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family+season+2+BATCH
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family+season+2+"1-12"
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family+season+2+"1 ~ 12"
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family+season+2
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+×+family+s2+BATCH
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+×+family+s2+"1-12"
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+×+family+s2+"1 ~ 12"
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+×+family+s2
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family+BATCH
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family+"1-12"
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family+"1 ~ 12"
+        [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family
+        */
 
         public virtual IndexerPageableRequestChain GetSearchRequests(SpecialEpisodeSearchCriteria searchCriteria)
         {

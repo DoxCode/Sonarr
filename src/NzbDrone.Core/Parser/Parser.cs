@@ -8,6 +8,7 @@ using System.Text.RegularExpressions;
 using NLog;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Common.Instrumentation;
+using NzbDrone.Core.IndexerSearch.Definitions;
 using NzbDrone.Core.Parser.Model;
 using NzbDrone.Core.Tv;
 
@@ -115,8 +116,8 @@ namespace NzbDrone.Core.Parser
                 new Regex(@"^(?:\[(?<subgroup>.+?)\](?:_|-|\s|\.)?)(?<title>.+?)(?:[-_\W](?<![()\[!]))+(?:S?(?<season>(?<!\d+)\d{1,2}(?!\d+))(?:(?:\-|[ex]|\W[ex]){1,2}(?<episode>\d{2}(?!\d+)))+)(?:(?:_|-|\s|\.)+(?<absoluteepisode>(?<!\d+)\d{2,3}(\.\d{1,2})?(?!\d+|\-[a-z])))+.*?(?<hash>[(\[]\w{8}[)\]])?$",
                           RegexOptions.IgnoreCase | RegexOptions.Compiled),
 
-                // Anime - [SubGroup] Title with trailing number Absolute Episode Number - Batch separated with tilde
-                new Regex(@"^\[(?<subgroup>.+?)\][-_. ]?(?<title>.+?[^-]+?)(?:(?<![-_. ]|\b[0]\d+) - )[-_. ]?(?<absoluteepisode>\d{2,3}(\.\d{1,2})?(?!\d+))\s?~\s?(?<absoluteepisode>\d{2,3}(\.\d{1,2})?(?!\d+))(?:[-_. ]+(?<special>special|ova|ovd))?.*?(?<hash>[(\[]\w{8}[)\]])?(?:$|\.mkv)",
+                // Anime - [SubGroup] Title with trailing number Absolute Episode Number - Batch separated with tilde (supports optional Part X segment)
+                new Regex(@"^\[(?<subgroup>.+?)\][-_. ]?(?<title>.+?[^-]+?)(?:\s+Part\s*(?<seasonpart>\d{1,2}))?(?:(?<![-_. ]|\b[0]\d+) - )[-_. ]?(?<absoluteepisode>\d{2,3}(\.\d{1,2})?(?!\d+))\s*[~\u301c\uFF5E]\s*(?<absoluteepisode>\d{2,3}(\.\d{1,2})?(?!\d+))(?:[-_. ]+(?<special>special|ova|ovd))?.*?(?<hash>[(\[]\w{8}[)\]])?(?:$|\.mkv)",
                     RegexOptions.IgnoreCase | RegexOptions.Compiled),
 
                 // Anime - [SubGroup] Title with season number in brackets Absolute Episode Number
@@ -579,6 +580,7 @@ namespace NzbDrone.Core.Parser
                                                                 RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex PartRegex = new Regex(@"\(\d+\)$", RegexOptions.Compiled);
+        private static readonly Regex PartNumberRegex = new Regex(@"Part\s*(?<partnumber>\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex PunctuationRegex = new Regex(@"[^\w\s]", RegexOptions.Compiled);
         private static readonly Regex ArticleWordRegex = new Regex(@"^(a|an|the)\s", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex SpecialEpisodeWordRegex = new Regex(@"\b(part|special|edition|christmas)\b\s?", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -589,9 +591,7 @@ namespace NzbDrone.Core.Parser
         private static readonly Regex RequestInfoRegex = new Regex(@"^(?:\[.+?\])+", RegexOptions.Compiled);
 
         private static readonly string[] Numbers = new[] { "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine" };
-
-        private static readonly Regex MultiRegex = new (@"[_. ](?<multi>multi)[_. ]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
+        private static readonly Regex MultiRegex = new Regex(@"[_. ](?<multi>multi)[_. ]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         public static ParsedEpisodeInfo ParsePath(string path)
         {
             var fileInfo = new FileInfo(path);
@@ -694,6 +694,11 @@ namespace NzbDrone.Core.Parser
 
         public static ParsedEpisodeInfo ParseTitle(string title)
         {
+            return ParseTitle(title, null, null);
+        }
+
+        public static ParsedEpisodeInfo ParseTitle(string title, SearchCriteriaBase releaseInfo, IEpisodeService episodeService)
+        {
             try
             {
                 if (!ValidateBeforeParsing(title))
@@ -768,7 +773,7 @@ namespace NzbDrone.Core.Parser
                         Logger.Trace(regex);
                         try
                         {
-                            var result = ParseMatchCollection(match, releaseTitle);
+                            var result = ParseMatchCollection(match, releaseTitle, releaseInfo, episodeService);
 
                             if (result != null)
                             {
@@ -835,6 +840,28 @@ namespace NzbDrone.Core.Parser
             }
 
             return parseResult.SeriesTitle;
+        }
+
+        public static int? ParsePartNumber(string releaseTitle)
+        {
+            if (releaseTitle.IsNullOrWhiteSpace())
+            {
+                return null;
+            }
+
+            var match = PartNumberRegex.Match(releaseTitle);
+
+            if (match.Success && match.Groups["partnumber"].Success)
+            {
+                if (int.TryParse(match.Groups["partnumber"].Value, out var partNumber))
+                {
+                    Logger.Debug("Part number parsed: {0}", partNumber);
+                    return partNumber;
+                }
+            }
+
+            Logger.Debug("No part number found in '{0}'", releaseTitle);
+            return null;
         }
 
         public static string CleanSeriesTitle(this string title)
@@ -1017,7 +1044,7 @@ namespace NzbDrone.Core.Parser
             return seriesTitleInfo;
         }
 
-        private static ParsedEpisodeInfo ParseMatchCollection(MatchCollection matchCollection, string releaseTitle)
+        private static ParsedEpisodeInfo ParseMatchCollection(MatchCollection matchCollection, string releaseTitle, SearchCriteriaBase releaseInfo = null, IEpisodeService episodeService = null)
         {
             var seriesName = matchCollection[0].Groups["title"].Value.Replace('.', ' ').Replace('_', ' ');
             seriesName = RequestInfoRegex.Replace(seriesName, "").Trim(' ');
@@ -1077,6 +1104,29 @@ namespace NzbDrone.Core.Parser
                         if (first > last)
                         {
                             return null;
+                        }
+
+                        var partNumber = ParsePartNumber(releaseTitle);
+                        if (partNumber.HasValue && releaseInfo != null)
+                        {
+                            if (first == 1 && releaseInfo is AnimeSeasonSearchCriteria or AnimeEpisodeSearchCriteria or SeasonSearchCriteria or SingleEpisodeSearchCriteria)
+                            {
+                                var partNumberValue = partNumber.Value;
+
+                                if (partNumberValue > 1)
+                                {
+                                    var fullEpisodeSeason = episodeService.GetEpisodesBySeason(releaseInfo.Series.Id, ((dynamic)releaseInfo).SeasonNumber);
+
+                                    var midseasonEpisodes = ((IEnumerable<Episode>)fullEpisodeSeason).Where(episode => episode.FinaleType == "midseason").ToList();
+                                    midseasonEpisodes.Sort((a, b) => a.EpisodeNumber.CompareTo(b.EpisodeNumber));
+
+                                    if (partNumberValue - 1 <= midseasonEpisodes.Count)
+                                    {
+                                        first = midseasonEpisodes[partNumberValue - 2].EpisodeNumber + first;
+                                        last = midseasonEpisodes[partNumberValue - 2].EpisodeNumber + last;
+                                    }
+                                }
+                            }
                         }
 
                         if ((first % 1) != 0 || (last % 1) != 0)

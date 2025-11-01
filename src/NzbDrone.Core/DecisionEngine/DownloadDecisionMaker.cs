@@ -12,6 +12,7 @@ using NzbDrone.Core.Download.Aggregation;
 using NzbDrone.Core.IndexerSearch.Definitions;
 using NzbDrone.Core.Parser;
 using NzbDrone.Core.Parser.Model;
+using NzbDrone.Core.Tv;
 
 namespace NzbDrone.Core.DecisionEngine
 {
@@ -23,6 +24,7 @@ namespace NzbDrone.Core.DecisionEngine
 
     public class DownloadDecisionMaker : IMakeDownloadDecision
     {
+        private readonly IEpisodeService _episodeService;
         private readonly IEnumerable<IDownloadDecisionEngineSpecification> _specifications;
         private readonly IParsingService _parsingService;
         private readonly ICustomFormatCalculationService _formatCalculator;
@@ -35,6 +37,7 @@ namespace NzbDrone.Core.DecisionEngine
                                      ICustomFormatCalculationService formatService,
                                      IRemoteEpisodeAggregationService aggregationService,
                                      ISceneMappingService sceneMappingService,
+                                     IEpisodeService episodeService,
                                      Logger logger)
         {
             _specifications = specifications;
@@ -42,6 +45,7 @@ namespace NzbDrone.Core.DecisionEngine
             _formatCalculator = formatService;
             _aggregationService = aggregationService;
             _sceneMappingService = sceneMappingService;
+            _episodeService = episodeService;
             _logger = logger;
         }
 
@@ -76,7 +80,18 @@ namespace NzbDrone.Core.DecisionEngine
 
                 try
                 {
-                    var parsedEpisodeInfo = Parser.Parser.ParseTitle(report.Title);
+                    var parsedEpisodeInfo = Parser.Parser.ParseTitle(report.Title, searchCriteria, _episodeService);
+
+                    if (searchCriteria.Episodes.Count == 1 && parsedEpisodeInfo != null && !searchCriteria.InteractiveSearch)
+                    {
+                        var count = parsedEpisodeInfo.AbsoluteEpisodeNumbers.Length + parsedEpisodeInfo.EpisodeNumbers.Length;
+                        if (count > 1)
+                        {
+                            _logger.Debug("Search criteria contains a single episode, but parsed release contains multiple episodes. Ignoring parsed episode info.");
+                            parsedEpisodeInfo = null;
+                            continue;
+                        }
+                    }
 
                     if (parsedEpisodeInfo == null || parsedEpisodeInfo.IsPossibleSpecialEpisode)
                     {
