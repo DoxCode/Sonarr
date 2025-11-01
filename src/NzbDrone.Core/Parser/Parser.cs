@@ -1107,6 +1107,8 @@ namespace NzbDrone.Core.Parser
                         }
 
                         var partNumber = ParsePartNumber(releaseTitle);
+
+                        Logger.Info("releaseInfo ? {0}", releaseInfo != null);
                         if (partNumber.HasValue && releaseInfo != null)
                         {
                             if (first == 1 && releaseInfo is AnimeSeasonSearchCriteria or AnimeEpisodeSearchCriteria or SeasonSearchCriteria or SingleEpisodeSearchCriteria)
@@ -1115,15 +1117,37 @@ namespace NzbDrone.Core.Parser
 
                                 if (partNumberValue > 1)
                                 {
-                                    var fullEpisodeSeason = episodeService.GetEpisodesBySeason(releaseInfo.Series.Id, ((dynamic)releaseInfo).SeasonNumber);
-
-                                    var midseasonEpisodes = ((IEnumerable<Episode>)fullEpisodeSeason).Where(episode => episode.FinaleType == "midseason").ToList();
-                                    midseasonEpisodes.Sort((a, b) => a.EpisodeNumber.CompareTo(b.EpisodeNumber));
-
-                                    if (partNumberValue - 1 <= midseasonEpisodes.Count)
+                                    if (episodeService == null)
                                     {
-                                        first = midseasonEpisodes[partNumberValue - 2].EpisodeNumber + first;
-                                        last = midseasonEpisodes[partNumberValue - 2].EpisodeNumber + last;
+                                        Logger.Debug("Part-based batch detected but episode service is unavailable. Skipping offset for '{0}'", releaseTitle);
+                                    }
+                                    else
+                                    {
+                                        var seasonNumber = ((dynamic)releaseInfo).SeasonNumber;
+                                        var fullEpisodeSeason = episodeService.GetEpisodesBySeason(releaseInfo.Series.Id, seasonNumber);
+                                        var seasonEpisodes = ((IEnumerable<Episode>)fullEpisodeSeason ?? Array.Empty<Episode>()).ToList();
+
+                                        Logger.Debug("Evaluating part {0} for '{1}' in season {2}. Episodes found: {3}", partNumberValue, releaseTitle, seasonNumber, seasonEpisodes.Count);
+
+                                        var midseasonEpisodes = seasonEpisodes
+                                            .Where(episode => !episode.FinaleType.IsNullOrWhiteSpace() && episode.FinaleType.Equals("midseason", StringComparison.OrdinalIgnoreCase))
+                                            .OrderBy(episode => episode.EpisodeNumber)
+                                            .ToList();
+
+                                        if (midseasonEpisodes.Count >= partNumberValue - 1)
+                                        {
+                                            var offsetEpisodeNumber = midseasonEpisodes[partNumberValue - 2].EpisodeNumber;
+
+                                            Logger.Debug("Applying midseason offset at episode {0} for part {1} on '{2}'", offsetEpisodeNumber, partNumberValue, releaseTitle);
+
+                                            first = offsetEpisodeNumber + first;
+                                            last = offsetEpisodeNumber + last;
+                                        }
+                                        else
+                                        {
+                                            var markers = midseasonEpisodes.Select(e => e.EpisodeNumber).ToList();
+                                            Logger.Debug("Unable to find midseason marker for part {0} on '{1}'. Markers found: {2}", partNumberValue, releaseTitle, markers.Any() ? string.Join(",", markers) : "none");
+                                        }
                                     }
                                 }
                             }
