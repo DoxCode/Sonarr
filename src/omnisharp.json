@@ -5,5 +5,10 @@
   },
   "FormattingOptions": {
     "enableEditorConfigSupport": true
-  }
+  },
+  "script": {
+    "enableRoslynAnalyzers": true,
+    "enableEditorConfigSupport": true
+  },
+  "SourceCodeSymbolSearchEnabled": true
 }
