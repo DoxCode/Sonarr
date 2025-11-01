@@ -82,14 +82,17 @@ namespace NzbDrone.Core.DecisionEngine
                 {
                     var parsedEpisodeInfo = Parser.Parser.ParseTitle(report.Title, searchCriteria, _episodeService);
 
-                    if (searchCriteria.Episodes.Count == 1 && parsedEpisodeInfo != null && !searchCriteria.InteractiveSearch)
+                    if (searchCriteria != null)
                     {
-                        var count = parsedEpisodeInfo.AbsoluteEpisodeNumbers.Length + parsedEpisodeInfo.EpisodeNumbers.Length;
-                        if (count > 1)
+                        if (searchCriteria.Episodes != null && searchCriteria.Episodes.Count == 1 && parsedEpisodeInfo != null && !searchCriteria.InteractiveSearch)
                         {
-                            _logger.Debug("Search criteria contains a single episode, but parsed release contains multiple episodes. Ignoring parsed episode info.");
-                            parsedEpisodeInfo = null;
-                            continue;
+                            var count = parsedEpisodeInfo.AbsoluteEpisodeNumbers.Length + parsedEpisodeInfo.EpisodeNumbers.Length;
+                            if (count > 1)
+                            {
+                                _logger.Debug("Search criteria contains a single episode, but parsed release contains multiple episodes. Ignoring parsed episode info.");
+                                parsedEpisodeInfo = null;
+                                continue;
+                            }
                         }
                     }
 
