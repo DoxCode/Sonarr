@@ -129,11 +129,11 @@ namespace NzbDrone.Core.Parser
         public RemoteEpisode Map(ParsedEpisodeInfo parsedEpisodeInfo, int seriesId, IEnumerable<int> episodeIds)
         {
             return new RemoteEpisode
-                   {
-                       ParsedEpisodeInfo = parsedEpisodeInfo,
-                       Series = _seriesService.GetSeries(seriesId),
-                       Episodes = _episodeService.GetEpisodes(episodeIds)
-                   };
+            {
+                ParsedEpisodeInfo = parsedEpisodeInfo,
+                Series = _seriesService.GetSeries(seriesId),
+                Episodes = _episodeService.GetEpisodes(episodeIds)
+            };
         }
 
         private RemoteEpisode Map(ParsedEpisodeInfo parsedEpisodeInfo, int tvdbId, int tvRageId, string imdbId, Series series, SearchCriteriaBase searchCriteria)
@@ -346,9 +346,9 @@ namespace NzbDrone.Core.Parser
                     ReleaseTitle = releaseTitle,
                     SeriesTitle = series.Title,
                     SeriesTitleInfo = new SeriesTitleInfo
-                        {
-                            Title = series.Title
-                        },
+                    {
+                        Title = series.Title
+                    },
                     SeasonNumber = episode.SeasonNumber,
                     EpisodeNumbers = new int[1] { episode.EpisodeNumber },
                     FullSeason = false,
@@ -534,14 +534,49 @@ namespace NzbDrone.Core.Parser
             var result = new List<Episode>();
 
             var sceneSeasonNumber = _sceneMappingService.GetSceneSeasonNumber(parsedEpisodeInfo.SeriesTitle, parsedEpisodeInfo.ReleaseTitle);
+            var absoluteNumbers = parsedEpisodeInfo.AbsoluteEpisodeNumbers ?? Array.Empty<int>();
+            var partOffset = 0;
 
-            foreach (var absoluteEpisodeNumber in parsedEpisodeInfo.AbsoluteEpisodeNumbers)
+            if (parsedEpisodeInfo.SeasonPart > 1 && absoluteNumbers.Any())
             {
+                var minAbsolute = absoluteNumbers.Min();
+
+                if (minAbsolute == 1)
+                {
+                    var targetSeasonNumber = parsedEpisodeInfo.SeasonNumber > 0 ? parsedEpisodeInfo.SeasonNumber : seasonNumber;
+                    var seasonEpisodes = _episodeService.GetEpisodesBySeason(series.Id, targetSeasonNumber) ?? new List<Episode>();
+
+                    var midseasonBreaks = seasonEpisodes
+                        .Where(episode => !episode.FinaleType.IsNullOrWhiteSpace() && episode.FinaleType.Equals("midseason", StringComparison.OrdinalIgnoreCase))
+                        .OrderBy(episode => episode.EpisodeNumber)
+                        .ToList();
+
+                    if (midseasonBreaks.Count >= parsedEpisodeInfo.SeasonPart - 1)
+                    {
+                        partOffset = midseasonBreaks[parsedEpisodeInfo.SeasonPart - 2].EpisodeNumber;
+                        _logger.Debug("Applying fallback midseason offset {0} for {1} part {2}", partOffset, series.Title, parsedEpisodeInfo.SeasonPart);
+                    }
+                    else
+                    {
+                        var breakPoints = midseasonBreaks.Select(e => e.EpisodeNumber.ToString()).ToList().ConcatToString();
+                        _logger.Debug("Unable to determine midseason offset for {0} part {1}. Breaks found: {2}", series.Title, parsedEpisodeInfo.SeasonPart, breakPoints.IsNullOrWhiteSpace() ? "none" : breakPoints);
+                    }
+                }
+            }
+
+            foreach (var absoluteEpisodeNumber in absoluteNumbers)
+            {
+                var adjustedAbsoluteEpisodeNumber = absoluteEpisodeNumber;
+                if (partOffset > 0 && absoluteEpisodeNumber >= 1)
+                {
+                    adjustedAbsoluteEpisodeNumber += partOffset;
+                }
+
                 var episodes = new List<Episode>();
 
                 if (parsedEpisodeInfo.Special)
                 {
-                    var episode = _episodeService.FindEpisode(series.Id, 0, absoluteEpisodeNumber);
+                    var episode = _episodeService.FindEpisode(series.Id, 0, adjustedAbsoluteEpisodeNumber);
                     episodes.AddIfNotNull(episode);
                 }
                 else if (sceneSource)
@@ -551,27 +586,27 @@ namespace NzbDrone.Core.Parser
                     // If this needs to be reverted tests will need to be added
                     if (sceneSeasonNumber.HasValue)
                     {
-                        episodes = _episodeService.FindEpisodesBySceneNumbering(series.Id, sceneSeasonNumber.Value, absoluteEpisodeNumber);
+                        episodes = _episodeService.FindEpisodesBySceneNumbering(series.Id, sceneSeasonNumber.Value, adjustedAbsoluteEpisodeNumber);
 
                         if (episodes.Empty())
                         {
-                            var episode = _episodeService.FindEpisode(series.Id, sceneSeasonNumber.Value, absoluteEpisodeNumber);
+                            var episode = _episodeService.FindEpisode(series.Id, sceneSeasonNumber.Value, adjustedAbsoluteEpisodeNumber);
                             episodes.AddIfNotNull(episode);
                         }
                     }
                     else if (parsedEpisodeInfo.SeasonNumber > 1 && parsedEpisodeInfo.EpisodeNumbers.Empty())
                     {
-                        episodes = _episodeService.FindEpisodesBySceneNumbering(series.Id, parsedEpisodeInfo.SeasonNumber, absoluteEpisodeNumber);
+                        episodes = _episodeService.FindEpisodesBySceneNumbering(series.Id, parsedEpisodeInfo.SeasonNumber, adjustedAbsoluteEpisodeNumber);
 
                         if (episodes.Empty())
                         {
-                            var episode = _episodeService.FindEpisode(series.Id, parsedEpisodeInfo.SeasonNumber, absoluteEpisodeNumber);
+                            var episode = _episodeService.FindEpisode(series.Id, parsedEpisodeInfo.SeasonNumber, adjustedAbsoluteEpisodeNumber);
                             episodes.AddIfNotNull(episode);
                         }
                     }
                     else
                     {
-                        episodes = _episodeService.FindEpisodesBySceneNumbering(series.Id, absoluteEpisodeNumber);
+                        episodes = _episodeService.FindEpisodesBySceneNumbering(series.Id, adjustedAbsoluteEpisodeNumber);
 
                         // Don't allow multiple results without a scene name mapping.
                         if (episodes.Count > 1)
@@ -583,18 +618,24 @@ namespace NzbDrone.Core.Parser
 
                 if (episodes.Empty())
                 {
-                    var episode = _episodeService.FindEpisode(series.Id, absoluteEpisodeNumber);
+                    var episode = _episodeService.FindEpisode(series.Id, adjustedAbsoluteEpisodeNumber);
                     episodes.AddIfNotNull(episode);
                 }
 
                 foreach (var episode in episodes)
                 {
-                    _logger.Debug("Using absolute episode number {0} for: {1} - TVDB: {2}x{3:00}",
-                                absoluteEpisodeNumber,
+                    var sourceSuffix = partOffset > 0 && adjustedAbsoluteEpisodeNumber != absoluteEpisodeNumber
+                        ? $" (from {absoluteEpisodeNumber})"
+                        : string.Empty;
+
+                    _logger.Debug("Using absolute episode number {0}{1} for: {2} - TVDB: {3}x{4:00}",
+                                adjustedAbsoluteEpisodeNumber,
+                                sourceSuffix,
                                 series.Title,
                                 episode.SeasonNumber,
                                 episode.EpisodeNumber);
 
+                    episode.AbsoluteEpisodeNumber = adjustedAbsoluteEpisodeNumber;
                     result.Add(episode);
                 }
             }
