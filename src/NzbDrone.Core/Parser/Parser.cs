@@ -1108,12 +1108,6 @@ namespace NzbDrone.Core.Parser
 
                         var partNumber = ParsePartNumber(releaseTitle);
 
-                        if (partNumber.HasValue && partNumber.Value > 0 && result.SeasonPart == 0)
-                        {
-                            result.SeasonPart = partNumber.Value;
-                            result.IsPartialSeason = partNumber.Value > 1;
-                        }
-
                         Logger.Info("releaseInfo ? {0}", releaseInfo != null);
                         if (partNumber.HasValue && releaseInfo != null)
                         {
