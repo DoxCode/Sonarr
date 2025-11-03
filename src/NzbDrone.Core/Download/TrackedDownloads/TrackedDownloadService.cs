@@ -34,6 +34,8 @@ namespace NzbDrone.Core.Download.TrackedDownloads
         private readonly IParsingService _parsingService;
         private readonly IHistoryService _historyService;
         private readonly IEventAggregator _eventAggregator;
+        private readonly IEpisodeService _episodeService;
+        private readonly ISeriesService _seriesService;
         private readonly IDownloadHistoryService _downloadHistoryService;
         private readonly IRemoteEpisodeAggregationService _aggregationService;
         private readonly ICustomFormatCalculationService _formatCalculator;
@@ -47,6 +49,8 @@ namespace NzbDrone.Core.Download.TrackedDownloads
                                       IEventAggregator eventAggregator,
                                       IDownloadHistoryService downloadHistoryService,
                                       IRemoteEpisodeAggregationService aggregationService,
+                                      IEpisodeService episodeService,
+                                      ISeriesService seriesService,
                                       Logger logger)
         {
             _parsingService = parsingService;
@@ -55,6 +59,8 @@ namespace NzbDrone.Core.Download.TrackedDownloads
             _eventAggregator = eventAggregator;
             _downloadHistoryService = downloadHistoryService;
             _aggregationService = aggregationService;
+            _episodeService = episodeService;
+            _seriesService = seriesService;
             _cache = cacheManager.GetCache<TrackedDownload>(GetType());
             _logger = logger;
         }
@@ -115,7 +121,7 @@ namespace NzbDrone.Core.Download.TrackedDownloads
                     .OrderByDescending(h => h.Date)
                     .ToList();
 
-                var parsedEpisodeInfo = Parser.Parser.ParseTitle(trackedDownload.DownloadItem.Title);
+                var parsedEpisodeInfo = Parser.Parser.ParseTitle(trackedDownload.DownloadItem.Title, null, _episodeService, _seriesService);
 
                 if (parsedEpisodeInfo != null)
                 {

@@ -694,10 +694,10 @@ namespace NzbDrone.Core.Parser
 
         public static ParsedEpisodeInfo ParseTitle(string title)
         {
-            return ParseTitle(title, null, null);
+            return ParseTitle(title, null, null, null);
         }
 
-        public static ParsedEpisodeInfo ParseTitle(string title, SearchCriteriaBase releaseInfo, IEpisodeService episodeService)
+        public static ParsedEpisodeInfo ParseTitle(string title, SearchCriteriaBase releaseInfo, IEpisodeService episodeService, ISeriesService seriesService = null)
         {
             try
             {
@@ -773,7 +773,7 @@ namespace NzbDrone.Core.Parser
                         Logger.Trace(regex);
                         try
                         {
-                            var result = ParseMatchCollection(match, releaseTitle, releaseInfo, episodeService);
+                            var result = ParseMatchCollection(match, releaseTitle, releaseInfo, episodeService, seriesService);
 
                             if (result != null)
                             {
@@ -1044,7 +1044,22 @@ namespace NzbDrone.Core.Parser
             return seriesTitleInfo;
         }
 
-        private static ParsedEpisodeInfo ParseMatchCollection(MatchCollection matchCollection, string releaseTitle, SearchCriteriaBase releaseInfo = null, IEpisodeService episodeService = null)
+        private static readonly Regex[] SeasonHintRegexes = new[]
+        {
+            // "Season X" o "Season XX" (delimitado por inicio, espacio, '.', '-')
+            new Regex(@"(?:^|[ .-])Season\s*(?<season>\d{1,2})(?=$|[^\w])",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled),
+
+            // "S X" o "SXX" con separador previo espacio, '.', '-' (p.ej. " S2", ".S02", "-S2")
+            new Regex(@"(?:^|[ .-])S\s*(?<season>\d{1,2})(?=$|[^\w])",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled),
+
+            // "[SXX]" o "(SXX)"
+            new Regex(@"\[\s*S\s*(?<season>\d{1,2})\s*\]|\(\s*S\s*(?<season>\d{1,2})\s*\)",
+                RegexOptions.IgnoreCase | RegexOptions.Compiled),
+        };
+
+        private static ParsedEpisodeInfo ParseMatchCollection(MatchCollection matchCollection, string releaseTitle, SearchCriteriaBase releaseInfo = null, IEpisodeService episodeService = null, ISeriesService seriesService = null)
         {
             var seriesName = matchCollection[0].Groups["title"].Value.Replace('.', ' ').Replace('_', ' ');
             seriesName = RequestInfoRegex.Replace(seriesName, "").Trim(' ');
@@ -1107,23 +1122,81 @@ namespace NzbDrone.Core.Parser
                         }
 
                         var partNumber = ParsePartNumber(releaseTitle);
-                        if (partNumber.HasValue && releaseInfo != null)
+                        if (partNumber.HasValue)
                         {
-                            if (first == 1 && releaseInfo is AnimeSeasonSearchCriteria or AnimeEpisodeSearchCriteria or SeasonSearchCriteria or SingleEpisodeSearchCriteria)
+                            var partNumberValue = partNumber.Value;
+
+                            if (releaseInfo != null && episodeService != null)
                             {
-                                var partNumberValue = partNumber.Value;
-
-                                if (partNumberValue > 1)
+                                if (first == 1 && releaseInfo is AnimeSeasonSearchCriteria or AnimeEpisodeSearchCriteria or SeasonSearchCriteria or SingleEpisodeSearchCriteria)
                                 {
-                                    var fullEpisodeSeason = episodeService.GetEpisodesBySeason(releaseInfo.Series.Id, ((dynamic)releaseInfo).SeasonNumber);
-
-                                    var midseasonEpisodes = ((IEnumerable<Episode>)fullEpisodeSeason).Where(episode => episode.FinaleType == "midseason").ToList();
-                                    midseasonEpisodes.Sort((a, b) => a.EpisodeNumber.CompareTo(b.EpisodeNumber));
-
-                                    if (partNumberValue - 1 <= midseasonEpisodes.Count)
+                                    if (partNumberValue > 1)
                                     {
-                                        first = midseasonEpisodes[partNumberValue - 2].EpisodeNumber + first;
-                                        last = midseasonEpisodes[partNumberValue - 2].EpisodeNumber + last;
+                                        var fullEpisodeSeason = episodeService.GetEpisodesBySeason(releaseInfo.Series.Id, ((dynamic)releaseInfo).SeasonNumber);
+
+                                        var midseasonEpisodes = ((IEnumerable<Episode>)fullEpisodeSeason).Where(episode => episode.FinaleType == "midseason").ToList();
+                                        midseasonEpisodes.Sort((a, b) => a.EpisodeNumber.CompareTo(b.EpisodeNumber));
+
+                                        if (partNumberValue - 1 <= midseasonEpisodes.Count)
+                                        {
+                                            first = midseasonEpisodes[partNumberValue - 2].EpisodeNumber + first;
+                                            last = midseasonEpisodes[partNumberValue - 2].EpisodeNumber + last;
+                                        }
+                                    }
+                                }
+                            }
+                            else if (seriesService != null && episodeService != null)
+                            {
+                                var seasonsCapture = new List<int>();
+                                var seasonFinal = -1;
+
+                                foreach (Capture seasonCapture in matchCollection[0].Groups["season"].Captures)
+                                {
+                                    if (int.TryParse(seasonCapture.Value, out var parsedSeason))
+                                    {
+                                        seasonsCapture.Add(parsedSeason);
+                                    }
+                                }
+
+                                if (seasonsCapture.Any())
+                                {
+                                    seasonFinal = seasonsCapture.First();
+                                }
+
+                                if (seasonFinal == -1)
+                                {
+                                    foreach (var rx in SeasonHintRegexes)
+                                    {
+                                        var m = rx.Match(releaseTitle);
+                                        if (m.Success && m.Groups["season"].Success &&
+                                            int.TryParse(m.Groups["season"].Value, out var season) &&
+                                            season >= 0 && season <= 99)
+                                        {
+                                            seasonFinal = season;
+                                            break;
+                                        }
+                                    }
+
+                                    if (seasonFinal == -1)
+                                    {
+                                        seasonFinal = 1;
+                                    }
+                                }
+
+                                if (seasonFinal > 0)
+                                {
+                                    var foundSerie = seriesService.FindByTitle(seriesName);
+                                    if (foundSerie != null)
+                                    {
+                                        var fullEpisodeSeason = episodeService.GetEpisodesBySeason(foundSerie.Id, seasonFinal);
+                                        var midseasonEpisodes = fullEpisodeSeason.Where(episode => episode.FinaleType == "midseason").ToList();
+                                        midseasonEpisodes.Sort((a, b) => a.EpisodeNumber.CompareTo(b.EpisodeNumber));
+
+                                        if (partNumberValue - 1 <= midseasonEpisodes.Count)
+                                        {
+                                            first = midseasonEpisodes[partNumberValue - 2].EpisodeNumber + first;
+                                            last = midseasonEpisodes[partNumberValue - 2].EpisodeNumber + last;
+                                        }
                                     }
                                 }
                             }
