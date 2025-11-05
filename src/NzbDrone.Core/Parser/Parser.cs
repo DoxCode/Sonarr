@@ -454,6 +454,10 @@ namespace NzbDrone.Core.Parser
                 new Regex(@"^(?:\[(?<subgroup>.+?)\][-_. ])?(?<title>.+?)[-_. ]+?[\[(](?:S|Season|Saison|Series|Stagione)[-_. ]?(?<season>\d{1,2}(?![-_. ]?\d+))(?:[-_. )\]]|$)+(?<extras>EXTRAS|SUBPACK)?(?!\\)",
                     RegexOptions.IgnoreCase | RegexOptions.Compiled),
 
+                // Anime - Title with Roman numeral season (Title II -> season 2). Supports II, III, IV, V
+                new Regex(@"^(?:\[(?<subgroup>.+?)\][-_. ]?)?(?<title>.+?)(?:[-_. ]+|\s+)(?<season>(?:II|III|IV|V))(?:[-_. ]+(?<special>special|ova|ovd))?.*?(?<hash>[(\[]\w{8}[)\]])?$",
+                    RegexOptions.IgnoreCase | RegexOptions.Compiled),
+
                 // Episodes without a title, Single episode numbers (S1E1, 1x1)
                 new Regex(@"^(?:S?(?<season>(?<!\d+)(?:\d{1,2}|\d{4})(?!\d+))(?:(?:[-_ ]?[ex])(?<episode>\d{1}(?!\d+))))",
                     RegexOptions.IgnoreCase | RegexOptions.Compiled)
@@ -1176,11 +1180,21 @@ namespace NzbDrone.Core.Parser
 
                 foreach (Capture seasonCapture in matchCollection[0].Groups["season"].Captures)
                 {
+                    // Try parsing numeric season first
                     if (int.TryParse(seasonCapture.Value, out var parsedSeason))
                     {
                         seasons.Add(parsedSeason);
-
                         lastSeasonEpisodeStringIndex = Math.Max(lastSeasonEpisodeStringIndex, seasonCapture.EndIndex());
+                    }
+                    else
+                    {
+                        // Support simple Roman numerals for anime seasons (I..V)
+                        var romanParsed = ParseRomanNumeral(seasonCapture.Value);
+                        if (romanParsed.HasValue)
+                        {
+                            seasons.Add(romanParsed.Value);
+                            lastSeasonEpisodeStringIndex = Math.Max(lastSeasonEpisodeStringIndex, seasonCapture.EndIndex());
+                        }
                     }
                 }
 
@@ -1385,6 +1399,31 @@ namespace NzbDrone.Core.Parser
             }
 
             throw new FormatException(string.Format("{0} isn't a number", value));
+        }
+
+        // Simple Roman numeral parser for small values used in anime season markers (I - V)
+        private static int? ParseRomanNumeral(string roman)
+        {
+            if (string.IsNullOrWhiteSpace(roman))
+            {
+                return null;
+            }
+
+            switch (roman.Trim().ToUpperInvariant())
+            {
+                case "I":
+                    return 1;
+                case "II":
+                    return 2;
+                case "III":
+                    return 3;
+                case "IV":
+                    return 4;
+                case "V":
+                    return 5;
+                default:
+                    return null;
+            }
         }
 
         private static string ConvertToNumerals(string input)
