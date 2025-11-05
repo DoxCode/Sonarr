@@ -186,6 +186,7 @@ namespace NzbDrone.Core.Indexers.Nyaa
                     if (searchCriteria.InteractiveSearch)
                     {
                         endTitles.Add(searchTitle);
+                        endTitles.Add(searchTitle + "+Season+" + searchCriteria.SeasonNumber);
                     }
                 }
 
