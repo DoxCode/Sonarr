@@ -133,7 +133,6 @@ namespace NzbDrone.Core.Indexers.Nyaa
             var partsEpisodes = new List<int> { 0 };
 
             partsEpisodes.AddRange(searchCriteria.Episodes.Where(episode => episode.FinaleType == "midseason" || episode.FinaleType == "season" || episode.FinaleType == "series").Select(e => e.EpisodeNumber).ToList());
-
             if (partsEpisodes.Count <= 2)
             {
                 filteredTitles = filteredTitles.Where(t => !Regex.IsMatch(t.ToLowerInvariant(), @"part\+\d+")).ToList();
@@ -194,14 +193,21 @@ namespace NzbDrone.Core.Indexers.Nyaa
                 // endTitles.Add(searchTitle);
             }
 
-            /*
-            if (searchCriteria.SeasonNumber > 1)
+            if (partsEpisodes.Count > 2 && !partFormed)
             {
-                // --
-                endTitles = endTitles.Where(t => t.ToLower().Contains("season")
-                                            || !t.StartsWith("season", System.StringComparison.OrdinalIgnoreCase)).ToList();
+                var mids = partsEpisodes.Count - 2;
+
+                foreach (var searchTitle in filteredTitles)
+                {
+                    // foreach a partsEpisodes ignorando el primero y ultimo.
+                    for (var itr = 1; itr < partsEpisodes.Count; itr++)
+                    {
+                        var ep = partsEpisodes[itr] - partsEpisodes[itr - 1];
+                        endTitles.Add(searchTitle + "+\"1-" + ep + "\"");
+                        endTitles.Add(searchTitle + "+\"1 ~ " + ep + "\"");
+                    }
+                }
             }
-            */
 
             if (searchCriteria.SeasonNumber > 1)
             {
