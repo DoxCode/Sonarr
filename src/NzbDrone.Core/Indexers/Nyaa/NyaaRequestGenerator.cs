@@ -182,6 +182,11 @@ namespace NzbDrone.Core.Indexers.Nyaa
                     endTitles.Add(searchTitle + "+BATCH");
                     endTitles.Add(searchTitle + "+\"1-" + numberEpisodesSeason + "\"");
                     endTitles.Add(searchTitle + "+\"1 ~ " + numberEpisodesSeason + "\"");
+
+                    if (searchCriteria.InteractiveSearch)
+                    {
+                        endTitles.Add(searchTitle);
+                    }
                 }
 
                 // pageableRequests.Add(GetPagedRequests(searchTitle));
