@@ -302,7 +302,8 @@ export const setSeasonReleasesFilter = createAction(SET_SEASON_RELEASES_FILTER);
 //
 // Helpers
 
-const fetchReleasesHelper = createFetchHandler(section, '/release');
+// Ensure long-running interactive searches don't timeout
+const fetchReleasesHelper = createFetchHandler(section, '/release', { timeout: 0 });
 
 //
 // Action Handlers
