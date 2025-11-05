@@ -80,7 +80,32 @@ namespace NzbDrone.Core.DecisionEngine
 
                 try
                 {
-                    var parsedEpisodeInfo = Parser.Parser.ParseTitle(report.Title, searchCriteria, _episodeService);
+                    var parsedEpisodeInfo = Parser.Parser.ParseTitle(report.Title);
+
+                    var partNumber = Parser.Parser.ParsePartNumber(report.Title);
+                    if (partNumber.HasValue)
+                    {
+                        var partNumberValue = partNumber.Value;
+
+                        if (searchCriteria is AnimeSeasonSearchCriteria or AnimeEpisodeSearchCriteria or SeasonSearchCriteria or SingleEpisodeSearchCriteria)
+                        {
+                            if (partNumberValue > 1)
+                            {
+                                var fullEpisodeSeason = _episodeService.GetEpisodesBySeason(searchCriteria.Series.Id, ((dynamic)searchCriteria).SeasonNumber);
+                                var midseasonEpisodes = ((IEnumerable<Episode>)fullEpisodeSeason).Where(episode => episode.FinaleType == "midseason").ToList();
+                                midseasonEpisodes.Sort((a, b) => a.EpisodeNumber.CompareTo(b.EpisodeNumber));
+
+                                if (partNumberValue - 1 <= midseasonEpisodes.Count)
+                                {
+                                    var offset = midseasonEpisodes[partNumberValue - 2].EpisodeNumber;
+                                    if (!parsedEpisodeInfo.AbsoluteEpisodeNumbers.Any(n => n > offset))
+                                    {
+                                        parsedEpisodeInfo.AbsoluteEpisodeNumbers = parsedEpisodeInfo.AbsoluteEpisodeNumbers.Select(n => n + offset).ToArray();
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     if (searchCriteria != null)
                     {
