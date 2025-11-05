@@ -232,7 +232,38 @@ namespace NzbDrone.Core.Indexers.Nyaa
                 }
             }
 
-            endTitles = endTitles.Select(title =>
+            var filteredFinal = new List<string>();
+
+            foreach (var title in endTitles)
+            {
+                // Si aparece "season X" con número distinto, es conflicto
+                var m = SeasonRegex.Match(title);
+                if (m.Success && int.TryParse(m.Groups["num"].Value, out var s) && s != searchCriteria.SeasonNumber)
+                {
+                    continue;
+                }
+
+                // Si aparece numeral romano (ii, iii, iv, v) y no coincide con la estación buscada => conflicto
+                var rm = RomanRegex.Match(title);
+                if (rm.Success)
+                {
+                    var key = rm.Value.ToLowerInvariant();
+                    if (RomanToNumber.TryGetValue(key, out var romanNum) && romanNum != searchCriteria.SeasonNumber)
+                    {
+                        continue;
+                    }
+                }
+
+                var sm = SRegex.Match(title);
+                if (sm.Success && int.TryParse(sm.Groups["num"].Value, out var sNum) && sNum != searchCriteria.SeasonNumber)
+                {
+                    continue;
+                }
+
+                filteredFinal.Add(title);
+            }
+
+            filteredFinal = filteredFinal.Select(title =>
             {
                 var parts = title.Split(new[] { '+' }, System.StringSplitOptions.RemoveEmptyEntries);
                 var distinctParts = parts.Distinct().ToList();
@@ -240,7 +271,7 @@ namespace NzbDrone.Core.Indexers.Nyaa
             }).ToList();
 
             var uniqueTitles = new List<string>();
-            foreach (var title in endTitles)
+            foreach (var title in filteredFinal)
             {
                 var titleParts = title.Split(new[] { '+' }, System.StringSplitOptions.RemoveEmptyEntries)
                     .OrderBy(p => p)
@@ -300,6 +331,19 @@ namespace NzbDrone.Core.Indexers.Nyaa
         [Info] NyaaRequestGenerator: Nyaa AnimeSeasonSearch: Final pattern: spy+x+family
         */
 
+        private static readonly Regex SRegex = new Regex(
+                    @"(?<=^|[ ._\-\/\+])s0?(?<num>[1-9]\d?)(?=$|[ ._\-\/\+])", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex SeasonRegex = new Regex(
+            @"(?:\+season\+0?(?<num>[1-9]\d?)(?=\+|$)|(?:^|[ ._\-\/])season\s+0?(?<num>[1-9]\d?)(?=$|[ ._\-\/]))",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex RomanRegex = new Regex(
+            @"(?<=^|[ ._\-\/\+])(ii|iii|iv|v)(?=$|[ ._\-\/\+])",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Dictionary<string, int> RomanToNumber = new Dictionary<string, int>
+        {
+            { "ii", 2 }, { "iii", 3 }, { "iv", 4 }, { "v", 5 }
+        };
         public virtual IndexerPageableRequestChain GetSearchRequests(SpecialEpisodeSearchCriteria searchCriteria)
         {
             var pageableRequests = new IndexerPageableRequestChain();
