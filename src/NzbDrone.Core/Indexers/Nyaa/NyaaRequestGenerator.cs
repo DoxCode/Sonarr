@@ -232,12 +232,27 @@ namespace NzbDrone.Core.Indexers.Nyaa
                 }
             }
 
-            endTitles = endTitles.Select(title =>
-            {
-                var parts = title.Split(new[] { '+' }, System.StringSplitOptions.RemoveEmptyEntries);
-                var distinctParts = parts.Distinct().ToList();
-                return string.Join("+", distinctParts);
-            }).ToList();
+            // Filtramos de endTitles dependiendo de la seasonNumber.
+            // Por ejemplo Si la Season number es 2 y el titulo contiene "Season X", pero ese X no es 2, se elimina.
+            // El ejemplo anterior se aplicará tambien para: SXX, donde XX no es la seasonNumber.
+            // Y también se aplicará para números romanos: Por ejemplo: Titulo Serie II, daremos por hecho que ese II es la seasonNumber 2
+            // En el caso anterior con los numeros romanos, siempre habra un espacio antes del numero romano y despues, tambien puede ser un "." o una "-"
+
+            // First, filter out titles that explicitly reference a different season number
+            // Cases handled:
+            //  - "+season+X" where X != SeasonNumber
+            //  - tokens like "+sXX" (or sX) where number != SeasonNumber
+            //  - standalone roman numerals (I, II, III, IV, V, ...) used as season hints that != SeasonNumber
+            endTitles = endTitles
+                .Where(t => MatchesSeasonTokens(t, searchCriteria.SeasonNumber))
+                .Select(title =>
+                {
+                    // Then, remove duplicate parts to avoid redundant query terms
+                    var parts = title.Split(new[] { '+' }, System.StringSplitOptions.RemoveEmptyEntries);
+                    var distinctParts = parts.Distinct().ToList();
+                    return string.Join("+", distinctParts);
+                })
+                .ToList();
 
             var uniqueTitles = new List<string>();
             foreach (var title in endTitles)
@@ -327,6 +342,126 @@ namespace NzbDrone.Core.Indexers.Nyaa
         private string PrepareQuery(string query)
         {
             return query.Replace(' ', '+');
+        }
+
+        private static bool MatchesSeasonTokens(string title, int seasonNumber)
+        {
+            if (seasonNumber <= 0 || string.IsNullOrWhiteSpace(title))
+            {
+                return true;
+            }
+
+            var t = title.ToLowerInvariant();
+            var tokens = t.Split(new[] { '+' }, System.StringSplitOptions.RemoveEmptyEntries);
+
+            // Check pattern: +season+<number>
+            for (var i = 0; i < tokens.Length; i++)
+            {
+                if (tokens[i] == "season" && i + 1 < tokens.Length)
+                {
+                    if (int.TryParse(tokens[i + 1], out var seasonToken))
+                    {
+                        if (seasonToken != seasonNumber)
+                        {
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            // Check tokens like s2, s02
+            var sMatch = Regex.Matches(t, @"(?<=\+)s0?\d{1,2}(?=\+|$)");
+            foreach (Match m in sMatch)
+            {
+                if (m.Success)
+                {
+                    var numPart = m.Value.TrimStart('s');
+                    if (int.TryParse(numPart, out var sNum))
+                    {
+                        if (sNum != seasonNumber)
+                        {
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            // Check standalone roman numerals as tokens (I, II, III, IV, V, ...)
+            foreach (var tok in tokens)
+            {
+                if (IsLikelyRomanToken(tok))
+                {
+                    var romanVal = RomanToInt(tok);
+                    if (romanVal > 0 && romanVal != seasonNumber)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsLikelyRomanToken(string token)
+        {
+            // Limit to common roman numerals range and avoid mistaking words; token must be only roman letters
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            if (!Regex.IsMatch(token, @"^[mdclxvi]+$"))
+            {
+                return false;
+            }
+
+            // Keep it short to avoid over-matching long words; typical season numerals are <= xx (20)
+            return token.Length <= 4; // e.g., i, ii, iii, iv, v, vi, vii, viii, ix, x, xi, xii, xiii, xiv, xv, xvi, xvii, xviii, xix, xx
+        }
+
+        private static int RomanToInt(string roman)
+        {
+            if (string.IsNullOrWhiteSpace(roman))
+            {
+                return 0;
+            }
+
+            var s = roman.ToUpperInvariant();
+            var total = 0;
+            var prev = 0;
+
+            foreach (var c in s)
+            {
+                var val = c switch
+                {
+                    'I' => 1,
+                    'V' => 5,
+                    'X' => 10,
+                    'L' => 50,
+                    'C' => 100,
+                    'D' => 500,
+                    'M' => 1000,
+                    _ => 0
+                };
+
+                if (val == 0)
+                {
+                    return 0;
+                }
+
+                if (val > prev)
+                {
+                    total += val - (2 * prev); // adjust previous addition
+                }
+                else
+                {
+                    total += val;
+                }
+
+                prev = val;
+            }
+
+            return total;
         }
     }
 }
