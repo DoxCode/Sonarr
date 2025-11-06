@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import ClientSideCollectionAppState from 'App/State/ClientSideCollectionAppState';
 import ReleasesAppState from 'App/State/ReleasesAppState';
@@ -7,10 +7,12 @@ import Icon from 'Components/Icon';
 import LoadingIndicator from 'Components/Loading/LoadingIndicator';
 import FilterMenu from 'Components/Menu/FilterMenu';
 import PageMenuButton from 'Components/Menu/PageMenuButton';
+import TextInput from 'Components/Form/TextInput';
+import Button from 'Components/Link/Button';
 import Column from 'Components/Table/Column';
 import Table from 'Components/Table/Table';
 import TableBody from 'Components/Table/TableBody';
-import { align, icons, kinds, sortDirections } from 'Helpers/Props';
+import { align, icons, kinds, sortDirections, sizes } from 'Helpers/Props';
 import { SortDirection } from 'Helpers/Props/sortDirections';
 import InteractiveSearchType from 'InteractiveSearch/InteractiveSearchType';
 import {
@@ -119,6 +121,7 @@ interface InteractiveSearchProps {
 }
 
 function InteractiveSearch({ type, searchPayload }: InteractiveSearchProps) {
+  const [customSearchTerm, setCustomSearchTerm] = useState('');
   const {
     isFetching,
     isPopulated,
@@ -160,6 +163,26 @@ function InteractiveSearch({ type, searchPayload }: InteractiveSearchProps) {
     [dispatch]
   );
 
+  const handleCustomSearchInputChange = useCallback(
+    (change: any) => {
+      setCustomSearchTerm(change.value);
+    },
+    []
+  );
+
+  const handleCustomSearch = useCallback(() => {
+    setCustomSearchTerm((term) => {
+      const trimmedTerm = term.trim();
+      if (trimmedTerm) {
+        dispatch(fetchReleases({
+          ...searchPayload,
+          customSearchTerm: trimmedTerm,
+        }));
+      }
+      return '';
+    });
+  }, [searchPayload, dispatch]);
+
   useEffect(
     () => {
       // Only fetch releases if they are not already being fetched and not yet populated.
@@ -187,6 +210,26 @@ function InteractiveSearch({ type, searchPayload }: InteractiveSearchProps) {
           filterModalConnectorComponentProps={{ type }}
           onFilterSelect={handleFilterSelect}
         />
+      </div>
+
+      <div style={{ padding: '10px', border: '1px solid #ccc', marginBottom: '20px', backgroundColor: '#f5f5f5' }}>
+        <h3>{translate('CustomTorrentSearch')}</h3>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <TextInput
+            name="customSearchTerm"
+            value={customSearchTerm}
+            placeholder={translate('CustomTorrentSearchPlaceholder')}
+            onChange={handleCustomSearchInputChange}
+          />
+          <Button
+            kind={kinds.PRIMARY}
+            size={sizes.SMALL}
+            onPress={handleCustomSearch}
+            isDisabled={!customSearchTerm.trim() || isFetching}
+          >
+            {translate('Search')}
+          </Button>
+        </div>
       </div>
 
       {isFetching ? <LoadingIndicator /> : null}

@@ -4,6 +4,22 @@
   margin-bottom: 10px;
 }
 
+.customSearchContainer {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  align-items: center;
+}
+
+.customSearchContainer input {
+  flex: 1;
+  min-width: 200px;
+}
+
+.customSearchContainer button {
+  white-space: nowrap;
+}
+
 .filteredMessage {
   margin-top: 10px;
 }

@@ -170,8 +170,13 @@ namespace Sonarr.Api.V3.Indexers
 
         [HttpGet]
         [Produces("application/json")]
-        public async Task<List<ReleaseResource>> GetReleases(int? seriesId, int? episodeId, int? seasonNumber)
+        public async Task<List<ReleaseResource>> GetReleases(int? seriesId, int? episodeId, int? seasonNumber, string customSearchTerm)
         {
+            if (!string.IsNullOrWhiteSpace(customSearchTerm))
+            {
+                return await GetCustomSearchReleases(customSearchTerm);
+            }
+
             if (episodeId.HasValue)
             {
                 return await GetEpisodeReleases(episodeId.Value);
@@ -183,6 +188,26 @@ namespace Sonarr.Api.V3.Indexers
             }
 
             return await GetRss();
+        }
+
+        private async Task<List<ReleaseResource>> GetCustomSearchReleases(string customSearchTerm)
+        {
+            try
+            {
+                var decisions = await _releaseSearchService.CustomSearch(customSearchTerm);
+                var prioritizedDecisions = _prioritizeDownloadDecision.PrioritizeDecisions(decisions);
+
+                return MapDecisions(prioritizedDecisions);
+            }
+            catch (SearchFailedException ex)
+            {
+                throw new NzbDroneClientException(HttpStatusCode.BadRequest, ex.Message);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Custom search failed: " + ex.Message);
+                throw new NzbDroneClientException(HttpStatusCode.InternalServerError, ex.Message);
+            }
         }
 
         private async Task<List<ReleaseResource>> GetEpisodeReleases(int episodeId)

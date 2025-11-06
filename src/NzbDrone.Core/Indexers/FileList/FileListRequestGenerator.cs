@@ -119,6 +119,18 @@ namespace NzbDrone.Core.Indexers.FileList
             return new IndexerPageableRequestChain();
         }
 
+        public IndexerPageableRequestChain GetSearchRequests(CustomTorrentSearchCriteria searchCriteria)
+        {
+            var pageableRequests = new IndexerPageableRequestChain();
+
+            if (!string.IsNullOrWhiteSpace(searchCriteria.CustomSearchTerm))
+            {
+                pageableRequests.Add(GetRequest("search-torrents", Settings.Categories.Concat(Settings.AnimeCategories), $"&type=name&query={Uri.EscapeDataString(searchCriteria.CustomSearchTerm.Trim())}"));
+            }
+
+            return pageableRequests;
+        }
+
         private void AddImdbRequests(IndexerPageableRequestChain chain, SearchCriteriaBase searchCriteria, string searchType, IEnumerable<int> categories, string parameters)
         {
             if (searchCriteria.Series.ImdbId.IsNotNullOrWhiteSpace())

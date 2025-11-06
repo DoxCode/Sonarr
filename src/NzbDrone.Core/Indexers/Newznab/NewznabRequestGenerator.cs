@@ -489,6 +489,24 @@ namespace NzbDrone.Core.Indexers.Newznab
             return pageableRequests;
         }
 
+        public virtual IndexerPageableRequestChain GetSearchRequests(CustomTorrentSearchCriteria searchCriteria)
+        {
+            var pageableRequests = new IndexerPageableRequestChain();
+
+            if (SupportsSearch && !string.IsNullOrWhiteSpace(searchCriteria.CustomSearchTerm))
+            {
+                var query = searchCriteria.CustomSearchTerm.Replace('+', ' ');
+                query = System.Web.HttpUtility.UrlEncode(query);
+
+                pageableRequests.Add(GetPagedRequests(MaxPages,
+                    Settings.Categories.Concat(Settings.AnimeCategories),
+                    "search",
+                    $"&q={query}"));
+            }
+
+            return pageableRequests;
+        }
+
         private void AddTvIdPageableRequests(IndexerPageableRequestChain chain, IEnumerable<int> categories, SearchCriteriaBase searchCriteria, string parameters)
         {
             var includeTvdbSearch = SupportsTvdbSearch && searchCriteria.Series.TvdbId > 0;

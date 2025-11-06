@@ -129,11 +129,11 @@ namespace NzbDrone.Core.Parser
         public RemoteEpisode Map(ParsedEpisodeInfo parsedEpisodeInfo, int seriesId, IEnumerable<int> episodeIds)
         {
             return new RemoteEpisode
-                   {
-                       ParsedEpisodeInfo = parsedEpisodeInfo,
-                       Series = _seriesService.GetSeries(seriesId),
-                       Episodes = _episodeService.GetEpisodes(episodeIds)
-                   };
+            {
+                ParsedEpisodeInfo = parsedEpisodeInfo,
+                Series = _seriesService.GetSeries(seriesId),
+                Episodes = _episodeService.GetEpisodes(episodeIds)
+            };
         }
 
         private RemoteEpisode Map(ParsedEpisodeInfo parsedEpisodeInfo, int tvdbId, int tvRageId, string imdbId, Series series, SearchCriteriaBase searchCriteria)
@@ -275,7 +275,7 @@ namespace NzbDrone.Core.Parser
 
         public ParsedEpisodeInfo ParseSpecialEpisodeTitle(ParsedEpisodeInfo parsedEpisodeInfo, string releaseTitle, int tvdbId, int tvRageId, string imdbId, SearchCriteriaBase searchCriteria = null)
         {
-            if (searchCriteria != null)
+            if (searchCriteria != null && searchCriteria.Series != null)
             {
                 if (tvdbId != 0 && tvdbId == searchCriteria.Series.TvdbId)
                 {
@@ -346,9 +346,9 @@ namespace NzbDrone.Core.Parser
                     ReleaseTitle = releaseTitle,
                     SeriesTitle = series.Title,
                     SeriesTitleInfo = new SeriesTitleInfo
-                        {
-                            Title = series.Title
-                        },
+                    {
+                        Title = series.Title
+                    },
                     SeasonNumber = episode.SeasonNumber,
                     EpisodeNumbers = new int[1] { episode.EpisodeNumber },
                     FullSeason = false,
@@ -371,7 +371,7 @@ namespace NzbDrone.Core.Parser
 
             if (sceneMapping != null)
             {
-                if (searchCriteria != null && searchCriteria.Series.TvdbId == sceneMapping.TvdbId)
+                if (searchCriteria != null && searchCriteria.Series != null && searchCriteria.Series.TvdbId == sceneMapping.TvdbId)
                 {
                     return new FindSeriesResult(searchCriteria.Series, SeriesMatchType.Alias);
                 }
@@ -387,7 +387,7 @@ namespace NzbDrone.Core.Parser
                 return new FindSeriesResult(series, SeriesMatchType.Alias);
             }
 
-            if (searchCriteria != null)
+            if (searchCriteria != null && searchCriteria.Series != null)
             {
                 if (searchCriteria.Series.CleanTitle == parsedEpisodeInfo.SeriesTitle.CleanSeriesTitle())
                 {

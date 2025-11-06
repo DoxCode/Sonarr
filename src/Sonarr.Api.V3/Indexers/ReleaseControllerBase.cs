@@ -35,7 +35,10 @@ namespace Sonarr.Api.V3.Indexers
             {
                 var release = MapDecision(downloadDecision, result.Count);
 
-                result.Add(release);
+                if (release != null)
+                {
+                    result.Add(release);
+                }
             }
 
             return result;

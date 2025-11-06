@@ -356,6 +356,19 @@ namespace NzbDrone.Core.Indexers.Nyaa
             return pageableRequests;
         }
 
+        public virtual IndexerPageableRequestChain GetSearchRequests(CustomTorrentSearchCriteria searchCriteria)
+        {
+            var pageableRequests = new IndexerPageableRequestChain();
+
+            if (!string.IsNullOrWhiteSpace(searchCriteria.CustomSearchTerm))
+            {
+                pageableRequests.Add(GetPagedRequests(PrepareQuery(searchCriteria.CustomSearchTerm)));
+                _logger.Info("Nyaa CustomSearch: Search term: {0}", searchCriteria.CustomSearchTerm);
+            }
+
+            return pageableRequests;
+        }
+
         private IEnumerable<IndexerRequest> GetPagedRequests(string term)
         {
             var baseUrl = $"{Settings.BaseUrl.TrimEnd('/')}/?page=rss{Settings.AdditionalParameters}";

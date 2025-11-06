@@ -23,6 +23,12 @@ namespace NzbDrone.Core.DecisionEngine.Specifications.Search
                 return DownloadSpecDecision.Accept();
             }
 
+            // Skip series check for custom torrent searches (searchCriteria.Series will be null)
+            if (searchCriteria.Series == null)
+            {
+                return DownloadSpecDecision.Accept();
+            }
+
             _logger.Debug("Checking if series matches searched series");
 
             if (remoteEpisode.Series.Id != searchCriteria.Series.Id)

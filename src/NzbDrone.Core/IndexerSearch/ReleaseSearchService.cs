@@ -23,6 +23,7 @@ namespace NzbDrone.Core.IndexerSearch
         Task<List<DownloadDecision>> EpisodeSearch(Episode episode, bool userInvokedSearch, bool interactiveSearch);
         Task<List<DownloadDecision>> SeasonSearch(int seriesId, int seasonNumber, bool missingOnly, bool monitoredOnly, bool userInvokedSearch, bool interactiveSearch);
         Task<List<DownloadDecision>> SeasonSearch(int seriesId, int seasonNumber, List<Episode> episodes, bool monitoredOnly, bool userInvokedSearch, bool interactiveSearch);
+        Task<List<DownloadDecision>> CustomSearch(string searchTerm);
     }
 
     public class ReleaseSearchService : ISearchForReleases
@@ -407,7 +408,7 @@ namespace NzbDrone.Core.IndexerSearch
                 .Select(epList => epList.First())
                 .ToList();
 
-             // First: perform season (batch) searches
+            // First: perform season (batch) searches
             foreach (var season in seasonsToSearch)
             {
                 searchSpec.SeasonNumber = season.SeasonNumber;
@@ -547,7 +548,11 @@ namespace NzbDrone.Core.IndexerSearch
                 _indexerFactory.AutomaticSearchEnabled();
 
             // Filter indexers to untagged indexers and indexers with intersecting tags
-            indexers = indexers.Where(i => i.Definition.Tags.Empty() || i.Definition.Tags.Intersect(criteriaBase.Series.Tags).Any()).ToList();
+            // For custom searches, Series might be null, so only filter by tags if Series is available
+            if (criteriaBase.Series != null)
+            {
+                indexers = indexers.Where(i => i.Definition.Tags.Empty() || i.Definition.Tags.Intersect(criteriaBase.Series.Tags).Any()).ToList();
+            }
 
             _logger.ProgressInfo("Searching indexers for {0}. {1} active indexers", criteriaBase, indexers.Count);
 
@@ -592,6 +597,28 @@ namespace NzbDrone.Core.IndexerSearch
             return decisions.GroupBy(d => d.RemoteEpisode.Release.Guid)
                 .Select(d => d.OrderBy(v => v.Rejections.Count()).ThenBy(v => v.RemoteEpisode?.Release?.IndexerPriority ?? IndexerDefinition.DefaultPriority).First())
                 .ToList();
+        }
+
+        public async Task<List<DownloadDecision>> CustomSearch(string searchTerm)
+        {
+            if (string.IsNullOrWhiteSpace(searchTerm))
+            {
+                throw new SearchFailedException("Search term cannot be empty");
+            }
+
+            var searchSpec = new CustomTorrentSearchCriteria
+            {
+                CustomSearchTerm = searchTerm,
+                InteractiveSearch = true
+            };
+
+            _logger.Info("CustomSearch: Performing custom search for term: {0}", searchTerm);
+
+            var decisions = await Dispatch(indexer => indexer.Fetch(searchSpec), (SearchCriteriaBase)searchSpec);
+
+            _logger.ProgressDebug("Total of {0} reports were found for custom search: {1}", decisions.Count, searchTerm);
+
+            return decisions;
         }
     }
 }

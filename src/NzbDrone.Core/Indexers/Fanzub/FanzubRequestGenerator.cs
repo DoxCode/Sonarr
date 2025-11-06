@@ -91,6 +91,18 @@ namespace NzbDrone.Core.Indexers.Fanzub
             return new IndexerPageableRequestChain();
         }
 
+        public virtual IndexerPageableRequestChain GetSearchRequests(CustomTorrentSearchCriteria searchCriteria)
+        {
+            var pageableRequests = new IndexerPageableRequestChain();
+
+            if (!string.IsNullOrWhiteSpace(searchCriteria.CustomSearchTerm))
+            {
+                pageableRequests.Add(GetPagedRequests(searchCriteria.CustomSearchTerm));
+            }
+
+            return pageableRequests;
+        }
+
         private IEnumerable<IndexerRequest> GetPagedRequests(string query)
         {
             var url = new StringBuilder();

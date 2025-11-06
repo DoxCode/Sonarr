@@ -104,6 +104,12 @@ namespace Sonarr.Api.V3.Indexers
             var torrentInfo = (model.RemoteEpisode.Release as TorrentInfo) ?? new TorrentInfo();
             var indexerFlags = torrentInfo.IndexerFlags;
 
+            // If ParsedEpisodeInfo is null, return early to avoid NullReferenceException
+            if (parsedEpisodeInfo == null)
+            {
+                return null;
+            }
+
             // TODO: Clean this mess up. don't mix data from multiple classes, use sub-resources instead? (Got a huge Deja Vu, didn't we talk about this already once?)
             return new ReleaseResource
             {

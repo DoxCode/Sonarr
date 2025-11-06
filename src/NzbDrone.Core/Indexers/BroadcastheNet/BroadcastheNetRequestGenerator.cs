@@ -224,6 +224,20 @@ namespace NzbDrone.Core.Indexers.BroadcastheNet
             return pageableRequests;
         }
 
+        public virtual IndexerPageableRequestChain GetSearchRequests(CustomTorrentSearchCriteria searchCriteria)
+        {
+            var pageableRequests = new IndexerPageableRequestChain();
+            var parameters = new BroadcastheNetTorrentQuery();
+
+            if (!string.IsNullOrWhiteSpace(searchCriteria.CustomSearchTerm))
+            {
+                parameters.Name = searchCriteria.CustomSearchTerm;
+                pageableRequests.Add(GetPagedRequests(MaxPages, parameters));
+            }
+
+            return pageableRequests;
+        }
+
         private bool AddSeriesSearchParameters(BroadcastheNetTorrentQuery parameters, SearchCriteriaBase searchCriteria)
         {
             if (searchCriteria.Series.TvdbId != 0)

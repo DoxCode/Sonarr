@@ -65,6 +65,20 @@ namespace NzbDrone.Core.Indexers.HDBits
             return new IndexerPageableRequestChain();
         }
 
+        public virtual IndexerPageableRequestChain GetSearchRequests(CustomTorrentSearchCriteria searchCriteria)
+        {
+            var pageableRequests = new IndexerPageableRequestChain();
+            var query = new TorrentQuery();
+
+            if (!string.IsNullOrWhiteSpace(searchCriteria.CustomSearchTerm))
+            {
+                query.Search = searchCriteria.CustomSearchTerm;
+                pageableRequests.Add(GetRequest(query));
+            }
+
+            return pageableRequests;
+        }
+
         public virtual IndexerPageableRequestChain GetSearchRequests(DailyEpisodeSearchCriteria searchCriteria)
         {
             var pageableRequests = new IndexerPageableRequestChain();
