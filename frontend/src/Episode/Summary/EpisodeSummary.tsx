@@ -1,10 +1,12 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import Icon from 'Components/Icon';
 import Label from 'Components/Label';
 import Column from 'Components/Table/Column';
 import Table from 'Components/Table/Table';
 import TableBody from 'Components/Table/TableBody';
+import Button from 'Components/Link/Button';
+import TextInput from 'Components/Form/TextInput';
 import Episode from 'Episode/Episode';
 import useEpisode, { EpisodeEntities } from 'Episode/useEpisode';
 import useEpisodeFile from 'EpisodeFile/useEpisodeFile';
@@ -15,7 +17,9 @@ import QualityProfileNameConnector from 'Settings/Profiles/Quality/QualityProfil
 import {
   deleteEpisodeFile,
   fetchEpisodeFile,
+  moveEpisodeFile,
 } from 'Store/Actions/episodeFileActions';
+import { InputChanged } from 'typings/inputs';
 import translate from 'Utilities/String/translate';
 import EpisodeAiring from './EpisodeAiring';
 import EpisodeFileRow from './EpisodeFileRow';
@@ -80,6 +84,9 @@ function EpisodeSummary(props: EpisodeSummaryProps) {
   const { seriesId, episodeId, episodeEntity, episodeFileId } = props;
 
   const dispatch = useDispatch();
+  const [editingPath, setEditingPath] = useState(false);
+  const [newPath, setNewPath] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const { qualityProfileId, network } = useSeries(seriesId) as Series;
 
@@ -107,6 +114,40 @@ function EpisodeSummary(props: EpisodeSummaryProps) {
       })
     );
   }, [episodeFileId, episodeEntity, dispatch]);
+
+  const handleEditPath = useCallback(() => {
+    setNewPath(path || '');
+    setEditingPath(true);
+  }, [path]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingPath(false);
+    setNewPath('');
+  }, []);
+
+  const handleSavePath = useCallback(() => {
+    if (newPath && newPath !== path && episodeFileId) {
+      setIsSaving(true);
+      dispatch(
+        moveEpisodeFile({
+          id: episodeFileId,
+          newPath,
+        })
+      );
+      // Reset form after a brief delay to allow Redux action to process
+      setTimeout(() => {
+        setEditingPath(false);
+        setNewPath('');
+        setIsSaving(false);
+        // Refresh episode file data to get any updates from parsing
+        dispatch(fetchEpisodeFile({ id: episodeFileId }));
+      }, 500);
+    }
+  }, [newPath, path, episodeFileId, dispatch]);
+
+  const handlePathChange = useCallback((change: InputChanged<unknown>) => {
+    setNewPath(String(change.value));
+  }, []);
 
   useEffect(() => {
     if (episodeFileId && !path) {
@@ -137,22 +178,65 @@ function EpisodeSummary(props: EpisodeSummaryProps) {
       </div>
 
       {path ? (
-        <Table columns={COLUMNS}>
-          <TableBody>
-            <EpisodeFileRow
-              path={path}
-              size={size!}
-              languages={languages!}
-              quality={quality!}
-              qualityCutoffNotMet={qualityCutoffNotMet!}
-              customFormats={customFormats!}
-              customFormatScore={customFormatScore!}
-              mediaInfo={mediaInfo!}
-              columns={COLUMNS}
-              onDeleteEpisodeFile={handleDeleteEpisodeFile}
-            />
-          </TableBody>
-        </Table>
+        <>
+          <Table columns={COLUMNS}>
+            <TableBody>
+              <EpisodeFileRow
+                path={path}
+                size={size!}
+                languages={languages!}
+                quality={quality!}
+                qualityCutoffNotMet={qualityCutoffNotMet!}
+                customFormats={customFormats!}
+                customFormatScore={customFormatScore!}
+                mediaInfo={mediaInfo!}
+                columns={COLUMNS}
+                onDeleteEpisodeFile={handleDeleteEpisodeFile}
+              />
+            </TableBody>
+          </Table>
+
+          <div className={styles.filePathEditor}>
+            <span className={styles.infoTitle}>{translate('EditFilePath')}</span>
+            <div className={styles.pathInputContainer}>
+              <TextInput
+                value={editingPath ? newPath : path}
+                onChange={handlePathChange}
+                readOnly={!editingPath}
+                className={styles.pathInput}
+                name="episodeFilePath"
+              />
+              <div className={styles.buttonGroup}>
+                {!editingPath ? (
+                  <Button
+                    kind={kinds.PRIMARY}
+                    onPress={handleEditPath}
+                    isDisabled={isSaving}
+                  >
+                    {translate('Edit')}
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      kind={kinds.SUCCESS}
+                      onPress={handleSavePath}
+                      isDisabled={isSaving || newPath === path}
+                    >
+                      {translate('Save')}
+                    </Button>
+                    <Button
+                      kind={kinds.DANGER}
+                      onPress={handleCancelEdit}
+                      isDisabled={isSaving}
+                    >
+                      {translate('Cancel')}
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
       ) : null}
     </div>
   );

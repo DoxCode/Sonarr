@@ -29,13 +29,14 @@ export const defaultState = {
 };
 
 //
-// Actions Types
+// Action Types
 
 export const FETCH_EPISODE_FILE = 'episodeFiles/fetchEpisodeFile';
 export const FETCH_EPISODE_FILES = 'episodeFiles/fetchEpisodeFiles';
 export const DELETE_EPISODE_FILE = 'episodeFiles/deleteEpisodeFile';
 export const DELETE_EPISODE_FILES = 'episodeFiles/deleteEpisodeFiles';
 export const UPDATE_EPISODE_FILES = 'episodeFiles/updateEpisodeFiles';
+export const MOVE_EPISODE_FILE = 'episodeFiles/moveEpisodeFile';
 export const CLEAR_EPISODE_FILES = 'episodeFiles/clearEpisodeFiles';
 
 //
@@ -46,6 +47,7 @@ export const fetchEpisodeFiles = createThunk(FETCH_EPISODE_FILES);
 export const deleteEpisodeFile = createThunk(DELETE_EPISODE_FILE);
 export const deleteEpisodeFiles = createThunk(DELETE_EPISODE_FILES);
 export const updateEpisodeFiles = createThunk(UPDATE_EPISODE_FILES);
+export const moveEpisodeFile = createThunk(MOVE_EPISODE_FILE);
 export const clearEpisodeFiles = createAction(CLEAR_EPISODE_FILES);
 
 //
@@ -173,6 +175,46 @@ export const actionHandlers = handleThunks({
             id,
             ...props
           });
+        }),
+
+        set({
+          section,
+          isSaving: false,
+          saveError: null
+        })
+      ]));
+    });
+
+    promise.fail((xhr) => {
+      dispatch(set({
+        section,
+        isSaving: false,
+        saveError: xhr
+      }));
+    });
+  },
+
+  [MOVE_EPISODE_FILE]: function(getState, payload, dispatch) {
+    const {
+      id: episodeFileId,
+      newPath
+    } = payload;
+
+    dispatch(set({ section, isSaving: true }));
+
+    const promise = createAjaxRequest({
+      url: `/episodeFile/${episodeFileId}/move`,
+      method: 'PUT',
+      dataType: 'json',
+      data: JSON.stringify({ newPath })
+    }).request;
+
+    promise.done((data) => {
+      dispatch(batchActions([
+        updateItem({
+          section,
+          id: episodeFileId,
+          path: data.path
         }),
 
         set({

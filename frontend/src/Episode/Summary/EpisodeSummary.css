@@ -43,10 +43,45 @@
   text-align: center;
 }
 
+.filePathEditor {
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid var(--borderColor);
+  border-radius: 4px;
+  background-color: var(--surfaceColor);
+}
+
+.pathInputContainer {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.pathInput {
+  flex: 1;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.buttonGroup {
+  display: flex;
+  gap: 10px;
+}
+
 @media only screen and (max-width: $breakpointMedium) {
   .size,
   .quality {
     flex: 0 0 80px;
+  }
+
+  .pathInputContainer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .buttonGroup {
+    flex-direction: column;
   }
 }
 
@@ -55,5 +90,14 @@
     overflow-y: hidden;
     min-width: 100%;
     width: 100%;
+  }
+
+  .pathInputContainer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .buttonGroup {
+    flex-direction: column;
   }
 }

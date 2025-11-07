@@ -2,12 +2,16 @@
 // Please do not change this file!
 interface CssExports {
   'actions': string;
+  'buttonGroup': string;
+  'filePathEditor': string;
   'fileRow': string;
   'files': string;
   'filesHeader': string;
   'infoTitle': string;
   'overview': string;
   'path': string;
+  'pathInput': string;
+  'pathInputContainer': string;
   'quality': string;
   'size': string;
 }

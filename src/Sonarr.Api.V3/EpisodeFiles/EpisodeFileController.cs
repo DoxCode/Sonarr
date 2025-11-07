@@ -27,6 +27,8 @@ namespace Sonarr.Api.V3.EpisodeFiles
         private readonly IMediaFileService _mediaFileService;
         private readonly IDeleteMediaFiles _mediaFileDeletionService;
         private readonly ISeriesService _seriesService;
+        private readonly IEpisodeService _episodeService;
+        private readonly IParsingService _parsingService;
         private readonly ICustomFormatCalculationService _formatCalculator;
         private readonly IUpgradableSpecification _upgradableSpecification;
 
@@ -34,6 +36,8 @@ namespace Sonarr.Api.V3.EpisodeFiles
                              IMediaFileService mediaFileService,
                              IDeleteMediaFiles mediaFileDeletionService,
                              ISeriesService seriesService,
+                             IEpisodeService episodeService,
+                             IParsingService parsingService,
                              ICustomFormatCalculationService formatCalculator,
                              IUpgradableSpecification upgradableSpecification)
             : base(signalRBroadcaster)
@@ -41,6 +45,8 @@ namespace Sonarr.Api.V3.EpisodeFiles
             _mediaFileService = mediaFileService;
             _mediaFileDeletionService = mediaFileDeletionService;
             _seriesService = seriesService;
+            _episodeService = episodeService;
+            _parsingService = parsingService;
             _formatCalculator = formatCalculator;
             _upgradableSpecification = upgradableSpecification;
         }
@@ -219,6 +225,111 @@ namespace Sonarr.Api.V3.EpisodeFiles
             _mediaFileService.Update(episodeFiles);
             var series = _seriesService.GetSeries(episodeFiles.First().SeriesId);
             return Accepted(episodeFiles.ConvertAll(f => f.ToResource(series, _upgradableSpecification, _formatCalculator)));
+        }
+
+        [HttpPut("{id}/move")]
+        [Consumes("application/json")]
+        public ActionResult<EpisodeFileResource> MoveEpisodeFile(int id, [FromBody] MoveEpisodeFileRequest request)
+        {
+            var episodeFile = _mediaFileService.Get(id);
+
+            if (episodeFile == null)
+            {
+                throw new NzbDroneClientException(global::System.Net.HttpStatusCode.NotFound, "Episode file not found");
+            }
+
+            if (string.IsNullOrWhiteSpace(request?.NewPath))
+            {
+                throw new BadRequestException("New path must be provided");
+            }
+
+            var series = _seriesService.GetSeries(episodeFile.SeriesId);
+
+#pragma warning disable CA3003
+            try
+            {
+                // Validate and sanitize the new path
+                var newPath = request.NewPath;
+
+                // Get the full paths and validate
+                var newFullPath = global::System.IO.Path.GetFullPath(newPath);
+                var seriesFullPath = global::System.IO.Path.GetFullPath(series.Path);
+
+                // Ensure the new path is within the series directory
+                if (!newFullPath.StartsWith(seriesFullPath, global::System.StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new BadRequestException("New path must be within the series directory");
+                }
+
+                var newDirectory = global::System.IO.Path.GetDirectoryName(newFullPath);
+
+                if (!string.IsNullOrEmpty(newDirectory) && !global::System.IO.Directory.Exists(newDirectory))
+                {
+                    global::System.IO.Directory.CreateDirectory(newDirectory);
+                }
+
+                // Move the file from old path to new path
+                var oldPath = global::System.IO.Path.Combine(seriesFullPath, episodeFile.RelativePath);
+                if (!string.IsNullOrEmpty(oldPath) && global::System.IO.File.Exists(oldPath))
+                {
+                    global::System.IO.File.Move(oldPath, newFullPath, true);
+                }
+
+                // Update the episode file with the new path
+                episodeFile.Path = newFullPath;
+                episodeFile.RelativePath = global::System.IO.Path.GetRelativePath(seriesFullPath, newFullPath);
+
+                // Parse the new filename to get updated episode information
+                var fileName = global::System.IO.Path.GetFileNameWithoutExtension(newFullPath);
+                var parsedEpisodeInfo = Parser.ParseTitle(fileName);
+
+                // If parsing was successful, update the associated episodes
+                if (parsedEpisodeInfo != null)
+                {
+                    try
+                    {
+                        var newEpisodes = _parsingService.GetEpisodes(parsedEpisodeInfo, series, episodeFile.SceneName != null);
+
+                        if (newEpisodes != null && newEpisodes.Any())
+                        {
+                            // Get the old episodes associated with this file
+                            var oldEpisodes = _episodeService.GetEpisodesByFileId(episodeFile.Id);
+
+                            // Remove the file ID from old episodes
+                            foreach (var oldEpisode in oldEpisodes)
+                            {
+                                oldEpisode.EpisodeFileId = 0;
+                                _episodeService.UpdateEpisode(oldEpisode);
+                            }
+
+                            // Associate the new episodes with this file
+                            foreach (var newEpisode in newEpisodes)
+                            {
+                                var existingEpisode = _episodeService.GetEpisode(newEpisode.Id);
+                                if (existingEpisode != null)
+                                {
+                                    existingEpisode.EpisodeFileId = episodeFile.Id;
+                                    _episodeService.UpdateEpisode(existingEpisode);
+                                }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Log parsing error but don't fail the operation
+                        // The file will be moved but episodes won't be updated
+                    }
+                }
+
+                _mediaFileService.Update(episodeFile);
+
+                return Accepted(episodeFile.ToResource(series, _upgradableSpecification, _formatCalculator));
+            }
+            catch (global::System.Exception ex)
+            {
+                throw new BadRequestException($"Failed to move episode file: {ex.Message}");
+            }
+#pragma warning restore CA3003
         }
 
         [NonAction]
