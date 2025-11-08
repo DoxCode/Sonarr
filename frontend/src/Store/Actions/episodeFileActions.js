@@ -37,6 +37,8 @@ export const DELETE_EPISODE_FILE = 'episodeFiles/deleteEpisodeFile';
 export const DELETE_EPISODE_FILES = 'episodeFiles/deleteEpisodeFiles';
 export const UPDATE_EPISODE_FILES = 'episodeFiles/updateEpisodeFiles';
 export const MOVE_EPISODE_FILE = 'episodeFiles/moveEpisodeFile';
+export const ASSOCIATE_EPISODE_FILE = 'episodeFiles/associateEpisodeFile';
+export const UNASSOCIATE_EPISODE_FILE = 'episodeFiles/unassociateEpisodeFile';
 export const CLEAR_EPISODE_FILES = 'episodeFiles/clearEpisodeFiles';
 
 //
@@ -48,6 +50,8 @@ export const deleteEpisodeFile = createThunk(DELETE_EPISODE_FILE);
 export const deleteEpisodeFiles = createThunk(DELETE_EPISODE_FILES);
 export const updateEpisodeFiles = createThunk(UPDATE_EPISODE_FILES);
 export const moveEpisodeFile = createThunk(MOVE_EPISODE_FILE);
+export const associateEpisodeFile = createThunk(ASSOCIATE_EPISODE_FILE);
+export const unassociateEpisodeFile = createThunk(UNASSOCIATE_EPISODE_FILE);
 export const clearEpisodeFiles = createAction(CLEAR_EPISODE_FILES);
 
 //
@@ -223,6 +227,103 @@ export const actionHandlers = handleThunks({
           saveError: null
         })
       ]));
+    });
+
+    promise.fail((xhr) => {
+      dispatch(set({
+        section,
+        isSaving: false,
+        saveError: xhr
+      }));
+    });
+  },
+
+  [ASSOCIATE_EPISODE_FILE]: function(getState, payload, dispatch) {
+    const {
+      episodeId,
+      filePath
+    } = payload;
+
+    dispatch(set({ section, isSaving: true }));
+
+    const promise = createAjaxRequest({
+      url: `/episodeFile/${episodeId}/associate`,
+      method: 'PUT',
+      dataType: 'json',
+      data: JSON.stringify({ filePath })
+    }).request;
+
+    promise.done((data) => {
+      // Get the episode from state to update it with the new episodeFileId
+      const episodes = getState().episodes.items;
+      const episode = _.find(episodes, { id: episodeId });
+
+      dispatch(batchActions([
+        updateItem({
+          section,
+          id: data.id,
+          path: data.path,
+          episodeFileId: data.id
+        }),
+
+        // Update the episode with the new episodeFileId so the UI reflects the association
+        episode && updateItem({
+          section: 'episodes',
+          ...episode,
+          episodeFileId: data.id,
+          hasFile: true
+        }),
+
+        set({
+          section,
+          isSaving: false,
+          saveError: null
+        })
+      ]).filter(Boolean)); // filter out undefined/null items
+    });
+
+    promise.fail((xhr) => {
+      dispatch(set({
+        section,
+        isSaving: false,
+        saveError: xhr
+      }));
+    });
+  },
+
+  [UNASSOCIATE_EPISODE_FILE]: function(getState, payload, dispatch) {
+    const {
+      episodeId
+    } = payload;
+
+    dispatch(set({ section, isSaving: true }));
+
+    const promise = createAjaxRequest({
+      url: `/episodeFile/${episodeId}/unassociate`,
+      method: 'DELETE',
+      dataType: 'json'
+    }).request;
+
+    promise.done(() => {
+      // Get the episode from state to update it after unassociation
+      const episodes = getState().episodes.items;
+      const episode = _.find(episodes, { id: episodeId });
+
+      dispatch(batchActions([
+        // Update the episode to remove the episodeFileId
+        episode && updateItem({
+          section: 'episodes',
+          ...episode,
+          episodeFileId: 0,
+          hasFile: false
+        }),
+
+        set({
+          section,
+          isSaving: false,
+          saveError: null
+        })
+      ].filter(Boolean))); // filter out undefined/null items
     });
 
     promise.fail((xhr) => {

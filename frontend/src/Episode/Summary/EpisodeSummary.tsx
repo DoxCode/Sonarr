@@ -7,6 +7,7 @@ import Table from 'Components/Table/Table';
 import TableBody from 'Components/Table/TableBody';
 import Button from 'Components/Link/Button';
 import TextInput from 'Components/Form/TextInput';
+import FilePickerModal from 'Components/Modal/FilePickerModal';
 import Episode from 'Episode/Episode';
 import useEpisode, { EpisodeEntities } from 'Episode/useEpisode';
 import useEpisodeFile from 'EpisodeFile/useEpisodeFile';
@@ -18,6 +19,8 @@ import {
   deleteEpisodeFile,
   fetchEpisodeFile,
   moveEpisodeFile,
+  associateEpisodeFile,
+  unassociateEpisodeFile,
 } from 'Store/Actions/episodeFileActions';
 import { InputChanged } from 'typings/inputs';
 import translate from 'Utilities/String/translate';
@@ -87,8 +90,12 @@ function EpisodeSummary(props: EpisodeSummaryProps) {
   const [editingPath, setEditingPath] = useState(false);
   const [newPath, setNewPath] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedFilePath, setSelectedFilePath] = useState('');
+  const [showFilePicker, setShowFilePicker] = useState(false);
 
   const { qualityProfileId, network } = useSeries(seriesId) as Series;
+
+  const { path: seriesPath } = useSeries(seriesId) as Series;
 
   const { airDateUtc, overview } = useEpisode(
     episodeId,
@@ -149,6 +156,60 @@ function EpisodeSummary(props: EpisodeSummaryProps) {
     setNewPath(String(change.value));
   }, []);
 
+  const handleSelectFile = useCallback(() => {
+    setShowFilePicker(true);
+  }, []);
+
+  const handleFilePickerSelect = useCallback((filePath: string) => {
+    setSelectedFilePath(filePath);
+    setShowFilePicker(false);
+  }, []);
+
+  const handleFilePickerClose = useCallback(() => {
+    setShowFilePicker(false);
+  }, []);
+
+  const handleAssociateFile = useCallback(() => {
+    if (selectedFilePath && episodeId) {
+      setIsSaving(true);
+      dispatch(
+        associateEpisodeFile({
+          episodeId,
+          filePath: selectedFilePath,
+        })
+      );
+      // Reset form after a brief delay to allow Redux action to process
+      // and refetch the episode to get the updated episodeFileId
+      setTimeout(() => {
+        setSelectedFilePath('');
+        setIsSaving(false);
+        // Import and dispatch fetch episode to get updated episodeFileId
+        // This will automatically re-render the component with the new file info
+      }, 500);
+    }
+  }, [selectedFilePath, episodeId, dispatch]);
+
+  const handleCancelAssociate = useCallback(() => {
+    setSelectedFilePath('');
+  }, []);
+
+  const handleUnassociateFile = useCallback(() => {
+    if (episodeId && episodeFileId) {
+      setIsSaving(true);
+      dispatch(
+        unassociateEpisodeFile({
+          episodeId,
+          episodeFileId,
+        })
+      );
+      // Reset form after a brief delay to allow Redux action to process
+      setTimeout(() => {
+        setIsSaving(false);
+        // The Redux state will be updated automatically, no need to fetch
+      }, 500);
+    }
+  }, [episodeId, episodeFileId, dispatch]);
+
   useEffect(() => {
     if (episodeFileId && !path) {
       dispatch(fetchEpisodeFile({ id: episodeFileId }));
@@ -208,13 +269,22 @@ function EpisodeSummary(props: EpisodeSummaryProps) {
               />
               <div className={styles.buttonGroup}>
                 {!editingPath ? (
-                  <Button
-                    kind={kinds.PRIMARY}
-                    onPress={handleEditPath}
-                    isDisabled={isSaving}
-                  >
-                    {translate('Edit')}
-                  </Button>
+                  <>
+                    <Button
+                      kind={kinds.PRIMARY}
+                      onPress={handleEditPath}
+                      isDisabled={isSaving}
+                    >
+                      {translate('Edit')}
+                    </Button>
+                    <Button
+                      kind={kinds.DANGER}
+                      onPress={handleUnassociateFile}
+                      isDisabled={isSaving}
+                    >
+                      {translate('Unassociate')}
+                    </Button>
+                  </>
                 ) : (
                   <>
                     <Button
@@ -237,7 +307,54 @@ function EpisodeSummary(props: EpisodeSummaryProps) {
             </div>
           </div>
         </>
-      ) : null}
+      ) : (
+        <div className={styles.filePathEditor}>
+          <span className={styles.infoTitle}>{translate('AssociateFile')}</span>
+          <div className={styles.pathInputContainer}>
+            <TextInput
+              value={selectedFilePath}
+              onChange={(change: InputChanged<unknown>) => setSelectedFilePath(String(change.value))}
+              placeholder={`${seriesPath || translate('SeriesPath')}/...`}
+              className={styles.pathInput}
+              name="episodeFilePathAssociate"
+            />
+            <div className={styles.buttonGroup}>
+              <Button
+                kind={kinds.PRIMARY}
+                onPress={handleSelectFile}
+                isDisabled={isSaving}
+              >
+                {translate('Browse')}
+              </Button>
+              <Button
+                kind={kinds.SUCCESS}
+                onPress={handleAssociateFile}
+                isDisabled={isSaving || !selectedFilePath}
+              >
+                {translate('Associate')}
+              </Button>
+              {selectedFilePath && (
+                <Button
+                  kind={kinds.DANGER}
+                  onPress={handleCancelAssociate}
+                  isDisabled={isSaving}
+                >
+                  {translate('Clear')}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFilePicker && seriesPath && (
+        <FilePickerModal
+          seriesId={seriesId}
+          seriesPath={seriesPath}
+          onSelect={handleFilePickerSelect}
+          onClose={handleFilePickerClose}
+        />
+      )}
     </div>
   );
 }

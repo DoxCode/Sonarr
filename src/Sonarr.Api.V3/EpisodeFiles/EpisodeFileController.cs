@@ -2,14 +2,17 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.AspNetCore.Mvc;
 using NzbDrone.Core.CustomFormats;
+using NzbDrone.Core.Datastore;
 using NzbDrone.Core.Datastore.Events;
 using NzbDrone.Core.DecisionEngine.Specifications;
 using NzbDrone.Core.Exceptions;
+using NzbDrone.Core.Languages;
 using NzbDrone.Core.MediaFiles;
 using NzbDrone.Core.MediaFiles.Events;
 using NzbDrone.Core.Messaging.Events;
 using NzbDrone.Core.Parser;
 using NzbDrone.Core.Parser.Model;
+using NzbDrone.Core.Qualities;
 using NzbDrone.Core.Tv;
 using NzbDrone.SignalR;
 using Sonarr.Http;
@@ -330,6 +333,113 @@ namespace Sonarr.Api.V3.EpisodeFiles
                 throw new BadRequestException($"Failed to move episode file: {ex.Message}");
             }
 #pragma warning restore CA3003
+        }
+
+        [HttpPut("{episodeId}/associate")]
+        [Consumes("application/json")]
+        public ActionResult<EpisodeFileResource> AssociateEpisodeFile(int episodeId, [FromBody] AssociateEpisodeFileRequest request)
+        {
+            var episode = _episodeService.GetEpisode(episodeId);
+
+            if (episode == null)
+            {
+                throw new NzbDroneClientException(global::System.Net.HttpStatusCode.NotFound, "Episode not found");
+            }
+
+            if (string.IsNullOrWhiteSpace(request?.FilePath))
+            {
+                throw new BadRequestException("File path must be provided");
+            }
+
+            var series = _seriesService.GetSeries(episode.SeriesId);
+
+#pragma warning disable CA3003
+            try
+            {
+                // Validate and sanitize the file path
+                var filePath = request.FilePath;
+
+                // Get the full paths and validate
+                var fileFullPath = global::System.IO.Path.GetFullPath(filePath);
+                var seriesFullPath = global::System.IO.Path.GetFullPath(series.Path);
+
+                // Ensure the file path is within the series directory
+                if (!fileFullPath.StartsWith(seriesFullPath, global::System.StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new BadRequestException("File must be within the series directory");
+                }
+
+                // Check if file exists
+                if (!global::System.IO.File.Exists(fileFullPath))
+                {
+                    throw new BadRequestException("File does not exist");
+                }
+
+                // Create or update episode file
+                var episodeFile = new EpisodeFile
+                {
+                    SeriesId = episode.SeriesId,
+                    Path = fileFullPath,
+                    RelativePath = global::System.IO.Path.GetRelativePath(seriesFullPath, fileFullPath),
+                    Size = new global::System.IO.FileInfo(fileFullPath).Length,
+                    DateAdded = global::System.DateTime.UtcNow,
+                    Quality = new QualityModel(),
+                    Languages = new List<Language> { Language.Unknown },
+                    Episodes = new LazyLoaded<List<Episode>>(new List<Episode> { episode })
+                };
+
+                // Add the episode file
+                _mediaFileService.Add(episodeFile);
+
+                // Associate the episode with this file
+                episode.EpisodeFileId = episodeFile.Id;
+                _episodeService.UpdateEpisode(episode);
+
+                return Accepted(episodeFile.ToResource(series, _upgradableSpecification, _formatCalculator));
+            }
+            catch (global::System.Exception ex)
+            {
+                throw new BadRequestException($"Failed to associate episode file: {ex.Message}");
+            }
+#pragma warning restore CA3003
+        }
+
+        [HttpDelete("{episodeId}/unassociate")]
+        public ActionResult UnassociateEpisodeFile(int episodeId)
+        {
+            var episode = _episodeService.GetEpisode(episodeId);
+
+            if (episode == null)
+            {
+                throw new NzbDroneClientException(global::System.Net.HttpStatusCode.NotFound, "Episode not found");
+            }
+
+            if (episode.EpisodeFileId == 0)
+            {
+                throw new BadRequestException("Episode does not have an associated file");
+            }
+
+            try
+            {
+                // Get the episode file to delete
+                var episodeFile = _mediaFileService.Get(episode.EpisodeFileId);
+
+                // Unassociate the episode from the file
+                episode.EpisodeFileId = 0;
+                _episodeService.UpdateEpisode(episode);
+
+                // Delete the episode file from the database (but not from disk)
+                if (episodeFile != null)
+                {
+                    _mediaFileService.Delete(episodeFile, DeleteMediaFileReason.ManualOverride);
+                }
+
+                return Ok();
+            }
+            catch (global::System.Exception ex)
+            {
+                throw new BadRequestException($"Failed to unassociate episode file: {ex.Message}");
+            }
         }
 
         [NonAction]
