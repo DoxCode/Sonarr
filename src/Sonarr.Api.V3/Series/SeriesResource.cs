@@ -19,6 +19,7 @@ namespace Sonarr.Api.V3.Series
         public string Title { get; set; }
         public List<AlternateTitleResource> AlternateTitles { get; set; }
         public string SortTitle { get; set; }
+        public string CustomName { get; set; }
 
         // V3: replace with Ended
         public SeriesStatusType Status { get; set; }
@@ -72,7 +73,7 @@ namespace Sonarr.Api.V3.Series
         public bool? EpisodesChanged { get; set; }
 
         [Obsolete("Deprecated")]
-        public int LanguageProfileId  => 1;
+        public int LanguageProfileId => 1;
     }
 
     public static class SeriesResourceMapper
@@ -85,63 +86,64 @@ namespace Sonarr.Api.V3.Series
             }
 
             return new SeriesResource
-                   {
-                       Id = model.Id,
+            {
+                Id = model.Id,
 
-                       Title = model.Title,
+                Title = model.Title,
 
-                       // AlternateTitles
-                       SortTitle = model.SortTitle,
+                // AlternateTitles
+                SortTitle = model.SortTitle,
+                CustomName = model.CustomName,
 
-                       // TotalEpisodeCount
-                       // EpisodeCount
-                       // EpisodeFileCount
-                       // SizeOnDisk
-                       Status = model.Status,
-                       Overview = model.Overview,
+                // TotalEpisodeCount
+                // EpisodeCount
+                // EpisodeFileCount
+                // SizeOnDisk
+                Status = model.Status,
+                Overview = model.Overview,
 
-                       // NextAiring
-                       // PreviousAiring
-                       Network = model.Network,
-                       AirTime = model.AirTime,
+                // NextAiring
+                // PreviousAiring
+                Network = model.Network,
+                AirTime = model.AirTime,
 
-                       // JsonClone
-                       Images = model.Images.JsonClone(),
+                // JsonClone
+                Images = model.Images.JsonClone(),
 
-                       Seasons = model.Seasons.ToResource(includeSeasonImages),
-                       Year = model.Year,
-                       OriginalLanguage = model.OriginalLanguage,
+                Seasons = model.Seasons.ToResource(includeSeasonImages),
+                Year = model.Year,
+                OriginalLanguage = model.OriginalLanguage,
 
-                       Path = model.Path,
-                       QualityProfileId = model.QualityProfileId,
+                Path = model.Path,
+                QualityProfileId = model.QualityProfileId,
 
-                       SeasonFolder = model.SeasonFolder,
-                       Monitored = model.Monitored,
-                       MonitorNewItems = model.MonitorNewItems,
+                SeasonFolder = model.SeasonFolder,
+                Monitored = model.Monitored,
+                MonitorNewItems = model.MonitorNewItems,
 
-                       UseSceneNumbering = model.UseSceneNumbering,
-                       Runtime = model.Runtime,
-                       TvdbId = model.TvdbId,
-                       TvRageId = model.TvRageId,
-                       TvMazeId = model.TvMazeId,
-                       TmdbId = model.TmdbId,
-                       FirstAired = model.FirstAired,
-                       LastAired = model.LastAired,
-                       SeriesType = model.SeriesType,
-                       CleanTitle = model.CleanTitle,
-                       ImdbId = model.ImdbId,
-                       TitleSlug = model.TitleSlug,
+                UseSceneNumbering = model.UseSceneNumbering,
+                Runtime = model.Runtime,
+                TvdbId = model.TvdbId,
+                TvRageId = model.TvRageId,
+                TvMazeId = model.TvMazeId,
+                TmdbId = model.TmdbId,
+                FirstAired = model.FirstAired,
+                LastAired = model.LastAired,
+                SeriesType = model.SeriesType,
+                CleanTitle = model.CleanTitle,
+                ImdbId = model.ImdbId,
+                TitleSlug = model.TitleSlug,
 
-                       // Root folder path needs to be calculated from the series path
-                       // RootFolderPath = model.RootFolderPath,
+                // Root folder path needs to be calculated from the series path
+                // RootFolderPath = model.RootFolderPath,
 
-                       Certification = model.Certification,
-                       Genres = model.Genres,
-                       Tags = model.Tags,
-                       Added = model.Added,
-                       AddOptions = model.AddOptions,
-                       Ratings = model.Ratings
-                   };
+                Certification = model.Certification,
+                Genres = model.Genres,
+                Tags = model.Tags,
+                Added = model.Added,
+                AddOptions = model.AddOptions,
+                Ratings = model.Ratings
+            };
         }
 
         public static NzbDrone.Core.Tv.Series ToModel(this SeriesResource resource)
@@ -152,57 +154,58 @@ namespace Sonarr.Api.V3.Series
             }
 
             return new NzbDrone.Core.Tv.Series
-                   {
-                       Id = resource.Id,
+            {
+                Id = resource.Id,
 
-                       Title = resource.Title,
+                Title = resource.Title,
 
-                       // AlternateTitles
-                       SortTitle = resource.SortTitle,
+                // AlternateTitles
+                SortTitle = resource.SortTitle,
+                CustomName = resource.CustomName,
 
-                       // TotalEpisodeCount
-                       // EpisodeCount
-                       // EpisodeFileCount
-                       // SizeOnDisk
-                       Status = resource.Status,
-                       Overview = resource.Overview,
+                // TotalEpisodeCount
+                // EpisodeCount
+                // EpisodeFileCount
+                // SizeOnDisk
+                Status = resource.Status,
+                Overview = resource.Overview,
 
-                       // NextAiring
-                       // PreviousAiring
-                       Network = resource.Network,
-                       AirTime = resource.AirTime,
-                       Images = resource.Images,
+                // NextAiring
+                // PreviousAiring
+                Network = resource.Network,
+                AirTime = resource.AirTime,
+                Images = resource.Images,
 
-                       Seasons = resource.Seasons?.ToModel() ?? new List<Season>(),
-                       Year = resource.Year,
-                       OriginalLanguage = resource.OriginalLanguage,
+                Seasons = resource.Seasons?.ToModel() ?? new List<Season>(),
+                Year = resource.Year,
+                OriginalLanguage = resource.OriginalLanguage,
 
-                       Path = resource.Path,
-                       QualityProfileId = resource.QualityProfileId,
+                Path = resource.Path,
+                QualityProfileId = resource.QualityProfileId,
 
-                       SeasonFolder = resource.SeasonFolder,
-                       Monitored = resource.Monitored,
-                       MonitorNewItems = resource.MonitorNewItems,
+                SeasonFolder = resource.SeasonFolder,
+                Monitored = resource.Monitored,
+                MonitorNewItems = resource.MonitorNewItems,
 
-                       UseSceneNumbering = resource.UseSceneNumbering,
-                       Runtime = resource.Runtime,
-                       TvdbId = resource.TvdbId,
-                       TvRageId = resource.TvRageId,
-                       TvMazeId = resource.TvMazeId,
-                       TmdbId = resource.TmdbId,
-                       FirstAired = resource.FirstAired,
-                       SeriesType = resource.SeriesType,
-                       CleanTitle = resource.CleanTitle,
-                       ImdbId = resource.ImdbId,
-                       TitleSlug = resource.TitleSlug,
-                       RootFolderPath = resource.RootFolderPath,
-                       Certification = resource.Certification,
-                       Genres = resource.Genres,
-                       Tags = resource.Tags,
-                       Added = resource.Added,
-                       AddOptions = resource.AddOptions,
-                       Ratings = resource.Ratings
-                   };
+                UseSceneNumbering = resource.UseSceneNumbering,
+                Runtime = resource.Runtime,
+                TvdbId = resource.TvdbId,
+                TvRageId = resource.TvRageId,
+                TvMazeId = resource.TvMazeId,
+                TmdbId = resource.TmdbId,
+                FirstAired = resource.FirstAired,
+                SeriesType = resource.SeriesType,
+                CleanTitle = resource.CleanTitle,
+                ImdbId = resource.ImdbId,
+                TitleSlug = resource.TitleSlug,
+                RootFolderPath = resource.RootFolderPath,
+                Certification = resource.Certification,
+                Genres = resource.Genres,
+                Tags = resource.Tags,
+                Added = resource.Added,
+                AddOptions = resource.AddOptions,
+                Ratings = resource.Ratings
+            };
         }
 
         public static NzbDrone.Core.Tv.Series ToModel(this SeriesResource resource, NzbDrone.Core.Tv.Series series)

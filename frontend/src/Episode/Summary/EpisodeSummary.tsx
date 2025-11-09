@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch } from 'react-redux';
 import Icon from 'Components/Icon';
 import Label from 'Components/Label';
 import Column from 'Components/Table/Column';

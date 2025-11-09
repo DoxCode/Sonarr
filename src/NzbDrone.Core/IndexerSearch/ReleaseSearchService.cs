@@ -303,11 +303,13 @@ namespace NzbDrone.Core.IndexerSearch
 
             if (includeGlobal)
             {
+                var searchTitle = !string.IsNullOrEmpty(series.CustomName) ? series.CustomName : series.Title;
+
                 yield return new SceneEpisodeMapping
                 {
                     Episode = episode,
                     SearchMode = SearchMode.Default,
-                    SceneTitles = new List<string> { series.Title },
+                    SceneTitles = new List<string> { searchTitle },
                     SeasonNumber = episode.SceneSeasonNumber ?? episode.SeasonNumber,
                     EpisodeNumber = episode.SceneEpisodeNumber ?? episode.EpisodeNumber,
                     AbsoluteEpisodeNumber = episode.SceneSeasonNumber ?? episode.AbsoluteEpisodeNumber
@@ -501,7 +503,8 @@ namespace NzbDrone.Core.IndexerSearch
 
             if (!spec.SceneTitles.Contains(series.Title, StringComparer.InvariantCultureIgnoreCase))
             {
-                spec.SceneTitles.Add(series.Title);
+                var searchTitle = !string.IsNullOrEmpty(series.CustomName) ? series.CustomName : series.Title;
+                spec.SceneTitles.Add(searchTitle);
             }
 
             return spec;

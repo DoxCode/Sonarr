@@ -289,6 +289,8 @@
   "CustomFormatUnknownConditionOption": "Unknown option '{key}' for condition '{implementation}'",
   "CustomFormats": "Custom Formats",
   "CustomFormatsLoadError": "Unable to load Custom Formats",
+  "CustomName": "Custom Name",
+  "CustomNameHelpText": "Use this name instead of the series title for automatic searches",
   "CustomFormatsSettings": "Custom Formats Settings",
   "CustomFormatsSettingsSummary": "Custom Formats and Settings",
   "CustomFormatsSettingsTriggerInfo": "A Custom Format will be applied to a release or file when it matches at least one of each of the different condition types chosen.",

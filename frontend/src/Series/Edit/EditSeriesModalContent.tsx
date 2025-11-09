@@ -52,6 +52,7 @@ function EditSeriesModalContent({
     seriesType,
     path,
     tags,
+    customName,
     rootFolderPath: initialRootFolderPath,
   } = useSeries(seriesId)!;
 
@@ -77,6 +78,7 @@ function EditSeriesModalContent({
         seriesType,
         path,
         tags,
+        customName,
       },
       pendingChanges,
       saveError
@@ -89,6 +91,7 @@ function EditSeriesModalContent({
     seriesType,
     path,
     tags,
+    customName,
     pendingChanges,
     saveError,
   ]);
@@ -241,6 +244,18 @@ function EditSeriesModalContent({
                   <Icon name={icons.ROOT_FOLDER} />
                 </FormInputButton>,
               ]}
+              onChange={handleInputChange}
+            />
+          </FormGroup>
+
+          <FormGroup size={sizes.MEDIUM}>
+            <FormLabel>{translate('CustomName')}</FormLabel>
+
+            <FormInputGroup
+              type={inputTypes.TEXT}
+              name="customName"
+              helpText={translate('CustomNameHelpText')}
+              {...settings.customName}
               onChange={handleInputChange}
             />
           </FormGroup>

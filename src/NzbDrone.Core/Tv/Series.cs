@@ -31,6 +31,7 @@ namespace NzbDrone.Core.Tv
         public string Title { get; set; }
         public string CleanTitle { get; set; }
         public string SortTitle { get; set; }
+        public string CustomName { get; set; }
         public SeriesStatusType Status { get; set; }
         public string Overview { get; set; }
         public string AirTime { get; set; }
@@ -83,6 +84,7 @@ namespace NzbDrone.Core.Tv
             RootFolderPath = otherSeries.RootFolderPath;
             Tags = otherSeries.Tags;
             AddOptions = otherSeries.AddOptions;
+            CustomName = otherSeries.CustomName;
         }
     }
 }
