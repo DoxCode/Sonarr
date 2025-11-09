@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import Icon from 'Components/Icon';
 import Label from 'Components/Label';
 import Column from 'Components/Table/Column';
@@ -92,15 +92,22 @@ function EpisodeSummary(props: EpisodeSummaryProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [selectedFilePath, setSelectedFilePath] = useState('');
   const [showFilePicker, setShowFilePicker] = useState(false);
+  const [justUnassociated, setJustUnassociated] = useState(false);
 
   const { qualityProfileId, network } = useSeries(seriesId) as Series;
 
   const { path: seriesPath } = useSeries(seriesId) as Series;
 
-  const { airDateUtc, overview } = useEpisode(
+  const episode = useEpisode(
     episodeId,
     episodeEntity
   ) as Episode;
+
+  const { airDateUtc, overview } = episode;
+
+  // Use episodeFileId from props, but also get from Redux to ensure we have latest
+  // This ensures when unassociate happens, we update immediately
+  const effectiveEpisodeFileId = episode?.episodeFileId || episodeFileId;
 
   const {
     path,
@@ -111,16 +118,16 @@ function EpisodeSummary(props: EpisodeSummaryProps) {
     qualityCutoffNotMet,
     customFormats,
     customFormatScore,
-  } = useEpisodeFile(episodeFileId) || {};
+  } = useEpisodeFile(effectiveEpisodeFileId) || {};
 
   const handleDeleteEpisodeFile = useCallback(() => {
     dispatch(
       deleteEpisodeFile({
-        id: episodeFileId,
+        id: effectiveEpisodeFileId,
         episodeEntity,
       })
     );
-  }, [episodeFileId, episodeEntity, dispatch]);
+  }, [effectiveEpisodeFileId, episodeEntity, dispatch]);
 
   const handleEditPath = useCallback(() => {
     setNewPath(path || '');
@@ -133,11 +140,11 @@ function EpisodeSummary(props: EpisodeSummaryProps) {
   }, []);
 
   const handleSavePath = useCallback(() => {
-    if (newPath && newPath !== path && episodeFileId) {
+    if (newPath && newPath !== path && effectiveEpisodeFileId) {
       setIsSaving(true);
       dispatch(
         moveEpisodeFile({
-          id: episodeFileId,
+          id: effectiveEpisodeFileId,
           newPath,
         })
       );
@@ -147,10 +154,10 @@ function EpisodeSummary(props: EpisodeSummaryProps) {
         setNewPath('');
         setIsSaving(false);
         // Refresh episode file data to get any updates from parsing
-        dispatch(fetchEpisodeFile({ id: episodeFileId }));
+        dispatch(fetchEpisodeFile({ id: effectiveEpisodeFileId }));
       }, 500);
     }
-  }, [newPath, path, episodeFileId, dispatch]);
+  }, [newPath, path, effectiveEpisodeFileId, dispatch]);
 
   const handlePathChange = useCallback((change: InputChanged<unknown>) => {
     setNewPath(String(change.value));
@@ -194,27 +201,36 @@ function EpisodeSummary(props: EpisodeSummaryProps) {
   }, []);
 
   const handleUnassociateFile = useCallback(() => {
-    if (episodeId && episodeFileId) {
+    if (episodeId && effectiveEpisodeFileId) {
+      setJustUnassociated(true);
       setIsSaving(true);
+      setEditingPath(false);
+      setNewPath('');
       dispatch(
         unassociateEpisodeFile({
           episodeId,
-          episodeFileId,
+          episodeFileId: effectiveEpisodeFileId,
         })
       );
       // Reset form after a brief delay to allow Redux action to process
       setTimeout(() => {
         setIsSaving(false);
-        // The Redux state will be updated automatically, no need to fetch
+        setJustUnassociated(false);
+        // Component will re-render with episodeFileId = 0 from Redux
+        // useEpisodeFile(0) will return undefined
+        // and the component will show the Associate section
       }, 500);
     }
-  }, [episodeId, episodeFileId, dispatch]);
+  }, [episodeId, effectiveEpisodeFileId, dispatch]);
 
   useEffect(() => {
-    if (episodeFileId && !path) {
-      dispatch(fetchEpisodeFile({ id: episodeFileId }));
+    // Only fetch episode file if we have a valid ID and path hasn't loaded yet
+    // This prevents trying to fetch a file that was just deleted (unassociated)
+    // Also skip if we just unassociated to prevent loading old file ID
+    if (effectiveEpisodeFileId && effectiveEpisodeFileId > 0 && !path && !justUnassociated) {
+      dispatch(fetchEpisodeFile({ id: effectiveEpisodeFileId }));
     }
-  }, [episodeFileId, path, dispatch]);
+  }, [effectiveEpisodeFileId, path, justUnassociated, dispatch]);
 
   const hasOverview = !!overview;
 

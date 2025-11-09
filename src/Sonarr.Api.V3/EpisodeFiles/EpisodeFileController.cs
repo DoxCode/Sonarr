@@ -375,6 +375,29 @@ namespace Sonarr.Api.V3.EpisodeFiles
                     throw new BadRequestException("File does not exist");
                 }
 
+                // Parse the filename to extract quality and language
+                var fileName = global::System.IO.Path.GetFileNameWithoutExtension(fileFullPath);
+                var parsedEpisodeInfo = Parser.ParseTitle(fileName);
+
+                // Extract quality and language from parsed info
+                var quality = new QualityModel();
+                var languages = new List<Language> { Language.Unknown };
+
+                if (parsedEpisodeInfo != null)
+                {
+                    // Set quality from parsed info if available
+                    if (parsedEpisodeInfo.Quality != null)
+                    {
+                        quality = parsedEpisodeInfo.Quality;
+                    }
+
+                    // Set languages from parsed info if available
+                    if (parsedEpisodeInfo.Languages != null && parsedEpisodeInfo.Languages.Any())
+                    {
+                        languages = parsedEpisodeInfo.Languages;
+                    }
+                }
+
                 // Create or update episode file
                 var episodeFile = new EpisodeFile
                 {
@@ -383,8 +406,8 @@ namespace Sonarr.Api.V3.EpisodeFiles
                     RelativePath = global::System.IO.Path.GetRelativePath(seriesFullPath, fileFullPath),
                     Size = new global::System.IO.FileInfo(fileFullPath).Length,
                     DateAdded = global::System.DateTime.UtcNow,
-                    Quality = new QualityModel(),
-                    Languages = new List<Language> { Language.Unknown },
+                    Quality = quality,
+                    Languages = languages,
                     Episodes = new LazyLoaded<List<Episode>>(new List<Episode> { episode })
                 };
 

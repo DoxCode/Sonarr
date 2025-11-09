@@ -308,22 +308,33 @@ export const actionHandlers = handleThunks({
       // Get the episode from state to update it after unassociation
       const episodes = getState().episodes.items;
       const episode = _.find(episodes, { id: episodeId });
+      const episodeFileId = episode?.episodeFileId;
 
-      dispatch(batchActions([
-        // Update the episode to remove the episodeFileId
-        episode && updateItem({
+      const actions = [];
+      
+      // Remove the episodeFile from Redux state
+      if (episodeFileId) {
+        actions.push(removeItem({ section, id: episodeFileId }));
+      }
+      
+      // Update the episode to remove the episodeFileId
+      if (episode) {
+        actions.push(updateItem({
+          id: episode.id,
           section: 'episodes',
-          ...episode,
           episodeFileId: 0,
           hasFile: false
-        }),
+        }));
+      }
+      
+      // Always add the set action
+      actions.push(set({
+        section,
+        isSaving: false,
+        saveError: null
+      }));
 
-        set({
-          section,
-          isSaving: false,
-          saveError: null
-        })
-      ].filter(Boolean))); // filter out undefined/null items
+      dispatch(batchActions(actions));
     });
 
     promise.fail((xhr) => {
