@@ -100,7 +100,7 @@ namespace NzbDrone.Core.Download.TrackedDownloads
 
             if (existingItem != null && existingItem.State != TrackedDownloadState.Downloading)
             {
-                checkAnChangeIfPart(existingItem, existingItem.RemoteEpisode.ParsedEpisodeInfo, downloadItem);
+                checkAnChangeIfPart(existingItem, existingItem.RemoteEpisode?.ParsedEpisodeInfo, downloadItem);
                 LogItemChange(existingItem, existingItem.DownloadItem, downloadItem);
 
                 existingItem.DownloadItem = downloadItem;
@@ -216,7 +216,11 @@ namespace NzbDrone.Core.Download.TrackedDownloads
 
             LogItemChange(trackedDownload, existingItem?.DownloadItem, trackedDownload.DownloadItem);
 
-            _cache.Set(trackedDownload.DownloadItem.DownloadId, trackedDownload);
+            if (trackedDownload.DownloadItem != null)
+            {
+                _cache.Set(trackedDownload.DownloadItem.DownloadId, trackedDownload);
+            }
+
             return trackedDownload;
         }
 
