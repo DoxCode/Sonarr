@@ -45,7 +45,6 @@ RUN DOTNET_ARCH=$TARGETARCH && \
     -c Release \
     -r linux-$DOTNET_ARCH \
     --no-restore \
-    --self-contained false \
     --framework net6.0 \
     -o /app/publish \
     -p:RunAnalyzers=false \
