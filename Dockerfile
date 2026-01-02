@@ -31,16 +31,21 @@ RUN yarn build
 # --- Compilación del Backend ---
 # Copia solo los archivos de proyecto para restaurar dependencias de .NET y aprovecha la caché
 
-RUN dotnet restore src/Sonarr.sln
+RUN DOTNET_ARCH=$TARGETARCH && \
+    if [ "$TARGETARCH" = "amd64" ]; then DOTNET_ARCH="x64"; fi && \
+    dotnet restore src/Sonarr.sln -r linux-$DOTNET_ARCH
 
 # Copia el resto del código y publica la aplicación para una arquitectura específica
 COPY . .
 
 # linux-x64 -t:PublishAllRids win-x64 linux-arm64
-RUN dotnet publish src/Sonarr.sln \
+RUN DOTNET_ARCH=$TARGETARCH && \
+    if [ "$TARGETARCH" = "amd64" ]; then DOTNET_ARCH="x64"; fi && \
+    dotnet publish src/Sonarr.sln \
     -c Release \
-    -r linux-${TARGETARCH} \
+    -r linux-$DOTNET_ARCH \
     --no-restore \
+    --self-contained false \
     --framework net6.0 \
     -o /app/publish \
     -p:RunAnalyzers=false \
